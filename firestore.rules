@@ -1,0 +1,82 @@
+rules_version = '2';
+
+// =====================================================================
+// Reglas de seguridad — Comprobación fotográfica Beeyond
+//   consulta    : lee todo
+//   verificador : + marca comprobaciones (solo el campo "estado" de los periodos) y sube cargas
+//   aprobador   : + aprueba cargas, escribe inventario, campañas y periodos
+//   admin       : + administra usuarios
+// Sin borrados físicos de datos de operación. Todo lo no declarado se niega.
+// =====================================================================
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function domainOk() { return signedIn() && request.auth.token.email.matches('.*@beeyondmedia[.]com$'); }
+    function userPath() { return /databases/$(database)/documents/users/$(request.auth.uid); }
+    function profile() { return get(userPath()).data; }
+    function active() { return signedIn() && exists(userPath()) && profile().activo == true; }
+    function rank(r) {
+      return r == 'admin' ? 4 : (r == 'aprobador' ? 3 : (r == 'verificador' ? 2 : (r == 'consulta' ? 1 : 0)));
+    }
+    function atLeast(r) { return active() && rank(profile().rol) >= rank(r); }
+    function onlyKeys(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
+    function setupPath() { return /databases/$(database)/documents/config/setup; }
+
+    // ---------- usuarios
+    match /users/{uid} {
+      allow read: if active() || (signedIn() && request.auth.uid == uid);
+      // Configuración inicial: la primera persona del dominio se crea a sí misma como admin
+      allow create: if (atLeast('admin') && request.resource.data.rol in ['consulta','verificador','aprobador','admin'])
+        || (domainOk() && request.auth.uid == uid && !exists(setupPath()) && existsAfter(setupPath())
+            && request.resource.data.rol == 'admin' && request.resource.data.activo == true);
+      // Un admin no puede cambiar su propio rol ni desactivarse
+      allow update: if atLeast('admin') && request.resource.data.rol in ['consulta','verificador','aprobador','admin']
+        && (uid != request.auth.uid || onlyKeys(['nombre']));
+      allow delete: if false;
+    }
+    match /config/setup {
+      allow read: if signedIn();
+      allow create: if domainOk() && !exists(setupPath()) && existsAfter(userPath());
+      allow update, delete: if false;
+    }
+
+    // ---------- inventario (un documento por ciudad)
+    match /catalogo/{ciudad} {
+      allow read: if active();
+      allow create, update: if atLeast('aprobador');
+      allow delete: if false;
+    }
+
+    // ---------- campañas y periodos
+    match /campanas/{id} {
+      allow read: if active();
+      allow create, update: if atLeast('aprobador');
+      allow delete: if false;
+    }
+    match /periodos/{id} {
+      allow read: if active();
+      allow create: if atLeast('aprobador');
+      allow update: if atLeast('aprobador') || (atLeast('verificador') && onlyKeys(['estado']));
+      allow delete: if false;
+    }
+
+    // ---------- cargas (historial)
+    match /cargas/{id} {
+      allow read: if active();
+      allow create: if atLeast('verificador') && request.resource.data.subidoPor == request.auth.uid
+        && request.resource.data.estado == 'pendiente';
+      allow update: if resource.data.estado == 'pendiente' && (
+        // aprobar o rechazar: aprobador que no la subió, o un admin
+        (atLeast('aprobador') && (resource.data.subidoPor != request.auth.uid || atLeast('admin'))
+          && request.resource.data.estado in ['aprobada','rechazada','pendiente']
+          && onlyKeys(['estado','revisadoPor','revisado','nota','resumen','periodos','sustituciones']))
+        // cancelar la propia
+        || (active() && resource.data.subidoPor == request.auth.uid && request.resource.data.estado == 'cancelada'
+          && onlyKeys(['estado','revisadoPor','revisado'])));
+      allow delete: if false;
+    }
+
+    match /{document=**} { allow read, write: if false; }
+  }
+}
