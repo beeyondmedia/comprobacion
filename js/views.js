@@ -1,6 +1,6 @@
 // Vistas de operación: Control, Avance, Campañas, Inventario y Usuarios.
 import { S, $, $$, esc, opt, pct, fecha, nowIso, nombreDe, pillCls, toast, can, saveF, ESTATUS, ROLES,
-  allRows, stOf, filtered, counts, stackBar, summaryHTML, periodosActivos, site } from "./core.js";
+  allRows, stOf, filtered, counts, stackBar, summaryHTML, periodosActivos, site, matchQuery, cleanSite } from "./core.js";
 import { downloadXlsx } from "./excel.js";
 import { DOMINIO } from "./config.js";
 
@@ -144,10 +144,11 @@ function openDrawer(cid) {
     ${d.link ? `<a href="${esc(d.link)}" target="_blank" rel="noopener">Abrir carpeta</a>` : ""}
     <label class="field"><span>Comentarios</span><textarea id="dCom" rows="4">${esc(d.comentarios || "")}</textarea></label>
   </div>
-  <footer><button class="btn" type="button" id="dSave">Guardar link y comentarios</button><button class="btn primary" type="button" id="dOk">${st === "Comprobado" ? "Comprobado ✔" : "Marcar comprobado ✔"}</button></footer>`;
+  <footer>${can("aprobador") ? `<button class="btn" type="button" id="dEditSite" style="margin-right:auto">Editar soporte</button>` : ""}<button class="btn" type="button" id="dSave">Guardar link y comentarios</button><button class="btn primary" type="button" id="dOk">${st === "Comprobado" ? "Comprobado ✔" : "Marcar comprobado ✔"}</button></footer>`;
   dr.hidden = false; $("#scrim").hidden = false;
   if (keep) { $("#dLink").value = keep.l; $("#dCom").value = keep.c; if (keep.focus) document.getElementById(keep.focus)?.focus(); }
   $("#dClose").onclick = closeDrawer;
+  if ($("#dEditSite")) $("#dEditSite").onclick = () => { const id = r.s.id; closeDrawer(); openSiteEditor(id); };
   if (!w) { $$(".body button,.body input,.body textarea,footer button", dr).forEach((x) => (x.disabled = true)); return; }
   $("#dSt").onclick = (e) => { const b = e.target.closest("button"); if (!b) return; const s = b.dataset.s;
     writeEstado(r, s === "Comprobado" ? { estatus: s, verificadoPor: S.auth.uid, fechaVerif: nowIso() } : { estatus: s }, "Estatus: " + s); };
@@ -157,6 +158,44 @@ function openDrawer(cid) {
   $("#dSave").onclick = () => writeEstado(r, { link: $("#dLink").value.trim(), comentarios: $("#dCom").value.trim() }, "Guardado");
   $("#dOk").onclick = () => { if (stOf(r) !== "Comprobado") writeEstado(r, { estatus: "Comprobado", drive: true, ppt: true, verificadoPor: S.auth.uid, fechaVerif: nowIso() }, "Marcado como comprobado"); };
 }
+// ================================================================ EDITAR SOPORTE
+export function openSiteEditor(id) {
+  const cur = S.catalogo.get(id); const dr = $("#drawer");
+  if (!cur) { toast("Ese soporte no está en el inventario"); return; }
+  const ed = can("aprobador");
+  const f = (k, label, v, type = "text") => `<label class="field"><span>${label}</span><input type="${type}" id="se-${k}" value="${esc(v ?? "")}" ${ed ? "" : "disabled"} ${type === "number" ? 'step="any"' : ""}></label>`;
+  dr.innerHTML = `<header><div style="flex:1;min-width:0"><div class="mono">${esc(id)}</div><h2>${ed ? "Editar soporte" : "Datos del soporte"}</h2><div class="note">${esc(cur.ciudad)}</div></div><button class="btn" type="button" id="seClose">Cerrar</button></header>
+  <div class="body">
+    <label class="field"><span>Tipo de espacio</span><select id="se-esp" ${ed ? "" : "disabled"}>${["CALLE", "CENTRO COMERCIAL", "AEROPUERTO"].map((e) => opt(e, e, cur.esp === e)).join("")}</select></label>
+    ${f("sop", "Venue type", cur.sop)}${f("ub", "Ubicación", cur.ub)}${f("det", "Detalle / posición", cur.det)}${f("owner", "Media owner", cur.owner)}
+    <div class="grid2f">${f("network", "Network", cur.network)}${f("idprov", "ID proveedor", cur.idprov)}</div>
+    ${f("medidas", "Medidas", cur.medidas)}
+    <div class="grid2f">${f("lat", "Latitud", cur.lat, "number")}${f("lon", "Longitud", cur.lon, "number")}</div>
+    <label class="toggle"><input type="checkbox" id="se-activo" ${cur.activo !== false ? "checked" : ""} ${ed ? "" : "disabled"}> Soporte activo</label>
+    ${(cur.alias || []).length ? `<div class="field"><span>Nombres originales con los que se ha recibido</span><div class="note">${(cur.alias || []).map(esc).join("<br>")}</div></div>` : ""}
+    ${cur.editadoPor ? `<p class="note">Última edición: ${esc(nombreDe(cur.editadoPor))} · ${fecha(cur.editado)}</p>` : ""}
+    <p class="note">${ed ? "El nombre anterior se guarda como nombre original, así los planes que lo traigan escrito igual se siguen reconociendo. El ID y la ciudad no se cambian aquí: usa la Carga de inventario." : "Solo un aprobador o administrador puede editar el inventario."}</p>
+  </div>
+  <footer>${ed ? `<button class="btn primary" type="button" id="seSave">Guardar cambios</button>` : ""}</footer>`;
+  dr.hidden = false; $("#scrim").hidden = false;
+  $("#seClose").onclick = closeDrawer;
+  if (!ed) return;
+  $("#seSave").onclick = async () => {
+    const up = (k) => $("#se-" + k).value.trim().toUpperCase();
+    const n = (k) => { const v = parseFloat($("#se-" + k).value); return isFinite(v) ? v : null; };
+    const next = cleanSite({ ...cur, esp: $("#se-esp").value, sop: up("sop"), ub: up("ub"), det: up("det"), owner: up("owner"), network: up("network"),
+      idprov: $("#se-idprov").value.trim(), medidas: $("#se-medidas").value.trim(), lat: n("lat"), lon: n("lon"), activo: $("#se-activo").checked });
+    if (!next.ub) { toast("La ubicación no puede quedar vacía"); return; }
+    const alias = new Set(cur.alias || []);
+    if (next.ub !== cur.ub || next.det !== cur.det) alias.add(cur.ub + (cur.det ? " - " + cur.det : ""));
+    next.alias = [...alias];
+    const data = { ...next, editadoPor: S.auth.uid, editado: nowIso() };
+    $("#seSave").disabled = true;
+    try { await S.be.batch([{ op: "update", path: "catalogo/" + cur.ciudad, fields: [[["sitios", id], data]] }]); toast("Soporte actualizado"); closeDrawer(); }
+    catch (e) { console.error(e); $("#seSave").disabled = false; toast("No se pudo guardar. Revisa tus permisos."); }
+  };
+}
+
 export function closeDrawer() { openCid = null; $("#drawer").hidden = true; $("#scrim").hidden = true; }
 export const drawerOpenWithFocus = () => openCid && $("#drawer").contains(document.activeElement) && /INPUT|TEXTAREA/.test(document.activeElement.tagName) && document.activeElement.type !== "checkbox";
 
@@ -226,22 +265,23 @@ export function viewInventario(main) {
   const nPer = new Map(); for (const p of S.periodos) for (const s of p.sitios || []) nPer.set(s, (nPer.get(s) || 0) + 1);
   const draw = (keep) => {
     const list = [...S.catalogo.entries()].map(([id, s]) => ({ id, ...s }))
-      .filter((s) => (!soloActivos || s.activo !== false) && (!city || s.ciudad === city) && (!q || `${s.id} ${s.ub} ${s.sop} ${s.det} ${s.owner} ${(s.alias || []).join(" ")}`.toUpperCase().includes(q.toUpperCase())))
+      .filter((s) => (!soloActivos || s.activo !== false) && (!city || s.ciudad === city) && matchQuery(q, s.id, s.ub, s.sop, s.det, s.owner, s.idprov, s.alias || []))
       .sort((a, b) => a.id.localeCompare(b.id));
     if (!keep) {
       main.innerHTML = `<div class="pagehead"><h1>Inventario de soportes</h1><button class="btn" type="button" id="invExp">Descargar inventario (Excel)</button>${can("verificador") ? `<a class="btn primary" href="#carga-inventario">Cargar cambios de inventario</a>` : ""}</div>
       <div class="toolbar"><label class="grow">Buscar<input type="search" id="iq" placeholder="ID, ubicación, owner o nombre original"></label><label>Ciudad<select id="ic">${opt("", "Todas")}${[...new Set([...S.catalogo.values()].map((s) => s.ciudad))].filter(Boolean).sort().map((c) => opt(c)).join("")}</select></label>
       <label class="toggle" style="flex:0 0 auto;text-transform:none;letter-spacing:0;font-size:13px;color:var(--fg)"><input type="checkbox" id="ia" checked> Solo activos</label></div>
-      <p class="note" id="icount"></p><div class="tablebox"><table><thead><tr><th>ID</th><th>Espacio</th><th>Venue type</th><th>Ubicación</th><th>Ciudad</th><th>Owner</th><th class="hide-sm">Medidas</th><th class="hide-sm">Campañas</th><th>Mapa</th></tr></thead><tbody id="irows"></tbody></table>
+      <p class="note" id="icount"></p>${can("aprobador") ? `<p class="note">Da clic en un soporte para corregir su nombre u otros datos.</p>` : ""}<div class="tablebox"><table><thead><tr><th>ID</th><th>Espacio</th><th>Venue type</th><th>Ubicación</th><th>Ciudad</th><th>Owner</th><th class="hide-sm">Medidas</th><th class="hide-sm">Campañas</th><th>Mapa</th></tr></thead><tbody id="irows"></tbody></table>
       <div class="empty" id="iempty" hidden></div><div class="more" id="imore" hidden><button class="btn" type="button" id="imoreb">Mostrar más</button></div></div>`;
       $("#iq").oninput = (e) => { q = e.target.value; invShown = 200; draw(true); };
       $("#ic").onchange = (e) => { city = e.target.value; invShown = 200; draw(true); };
       $("#ia").onchange = (e) => { soloActivos = e.target.checked; draw(true); };
       $("#invExp").onclick = exportInventario;
       $("#imoreb").onclick = () => { invShown += 400; draw(true); };
+      $("#irows").onclick = (e) => { if (e.target.closest("a")) return; const tr = e.target.closest("tr[data-sid]"); if (tr) openSiteEditor(tr.dataset.sid); };
     }
     $("#icount").textContent = `${list.length} soportes`;
-    $("#irows").innerHTML = list.slice(0, invShown).map((s) => `<tr><td class="mono">${esc(s.id)}</td><td>${esc(s.esp)}</td><td>${esc(s.sop)}</td><td class="ub">${esc(s.ub)}${s.det ? `<small>${esc(s.det)}</small>` : ""}${s.activo === false ? ` <span class="pill p-cancelada">Inactivo</span>` : ""}</td><td>${esc(s.ciudad)}</td><td>${esc(s.owner)}</td><td class="hide-sm">${esc(s.medidas || "")}</td><td class="hide-sm num">${nPer.get(s.id) || 0}</td><td>${s.lat != null ? `<a href="https://www.google.com/maps?q=${s.lat},${s.lon}" target="_blank" rel="noopener">Maps</a>` : "—"}</td></tr>`).join("");
+    $("#irows").innerHTML = list.slice(0, invShown).map((s) => `<tr class="click" data-sid="${esc(s.id)}" title="${can("aprobador") ? "Editar soporte" : "Ver soporte"}"><td class="mono">${esc(s.id)}</td><td>${esc(s.esp)}</td><td>${esc(s.sop)}</td><td class="ub">${esc(s.ub)}${s.det ? `<small>${esc(s.det)}</small>` : ""}${s.activo === false ? ` <span class="pill p-cancelada">Inactivo</span>` : ""}</td><td>${esc(s.ciudad)}</td><td>${esc(s.owner)}</td><td class="hide-sm">${esc(s.medidas || "")}</td><td class="hide-sm num">${nPer.get(s.id) || 0}</td><td>${s.lat != null ? `<a href="https://www.google.com/maps?q=${s.lat},${s.lon}" target="_blank" rel="noopener">Maps</a>` : "—"}</td></tr>`).join("");
     $("#iempty").hidden = list.length > 0;
     $("#iempty").textContent = S.catalogo.size ? "Ningún soporte coincide." : "El inventario está vacío. Un aprobador o administrador debe hacer la primera carga de inventario.";
     $("#imore").hidden = list.length <= invShown;

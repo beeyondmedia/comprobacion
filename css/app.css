@@ -183,3 +183,5 @@ td select{max-width:440px;width:100%}
 .kpi.main::before{content:"";position:absolute;inset:0 0 auto;height:3px;background:var(--grad)}
 .toast{background:var(--ink);color:var(--bg)}
 .themebtn{display:inline-flex;align-items:center;gap:6px}
+.grid2f>*{min-width:0}
+.drawer .field input,.drawer .field select,.drawer .field textarea{width:100%}

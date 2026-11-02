@@ -45,12 +45,19 @@ export function allRows(periodos = periodosActivos()) {
   return out;
 }
 export const stOf = (r) => r.st.estatus || "Pendiente";
+// Búsqueda: sin importar acentos, mayúsculas, signos ni el orden de las palabras.
+export const fold = (s) => String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
+export function matchQuery(q, ...fields) {
+  const t = fold(q).split(" ").filter(Boolean); if (!t.length) return true;
+  const h = " " + fold(fields.flat().join(" ")) + " ";
+  return t.every((x) => h.includes(x));
+}
 export function filtered(rows, { noStatus = false } = {}) {
-  const F = S.F, q = F.q.trim().toUpperCase();
+  const F = S.F;
   return rows.filter((r) => (!F.camp || r.p.campana === F.camp) && (!F.per || r.p.periodo === F.per) &&
     (!F.city || r.s.ciudad === F.city) && (!F.owner || r.s.owner === F.owner) && (!F.esp || r.s.esp === F.esp) &&
     (noStatus || !F.st || stOf(r) === F.st) &&
-    (!q || `${r.s.ub} ${r.s.sop} ${r.s.det} ${r.s.id} ${r.s.owner}`.toUpperCase().includes(q)));
+    matchQuery(F.q, r.s.ub, r.s.sop, r.s.det, r.s.id, r.s.owner, r.s.ciudad, r.s.idprov, r.s.alias || [], r.p.campana));
 }
 export function counts(rows) {
   const k = { total: rows.length, Comprobado: 0, "En revisión": 0, "Con observaciones": 0, Pendiente: 0 };
