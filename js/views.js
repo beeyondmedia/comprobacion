@@ -144,11 +144,12 @@ function openDrawer(cid) {
     ${d.link ? `<a href="${esc(d.link)}" target="_blank" rel="noopener">Abrir carpeta</a>` : ""}
     <label class="field"><span>Comentarios</span><textarea id="dCom" rows="4">${esc(d.comentarios || "")}</textarea></label>
   </div>
-  <footer>${can("aprobador") ? `<button class="btn" type="button" id="dEditSite" style="margin-right:auto">Editar soporte</button>` : ""}<button class="btn" type="button" id="dSave">Guardar link y comentarios</button><button class="btn primary" type="button" id="dOk">${st === "Comprobado" ? "Comprobado ✔" : "Marcar comprobado ✔"}</button></footer>`;
+  <footer>${can("aprobador") ? `<button class="btn" type="button" id="dEditSite">Editar soporte</button><button class="btn" type="button" id="dEditPer" style="margin-right:auto">Sustituir o dar de baja</button>` : ""}<button class="btn" type="button" id="dSave">Guardar link y comentarios</button><button class="btn primary" type="button" id="dOk">${st === "Comprobado" ? "Comprobado ✔" : "Marcar comprobado ✔"}</button></footer>`;
   dr.hidden = false; $("#scrim").hidden = false;
   if (keep) { $("#dLink").value = keep.l; $("#dCom").value = keep.c; if (keep.focus) document.getElementById(keep.focus)?.focus(); }
   $("#dClose").onclick = closeDrawer;
   if ($("#dEditSite")) $("#dEditSite").onclick = () => { const id = r.s.id; closeDrawer(); openSiteEditor(id); };
+  if ($("#dEditPer")) $("#dEditPer").onclick = () => { const pid = r.p.id, sid = r.s.id; closeDrawer(); openPeriodEditor(pid, sid); };
   if (!w) { $$(".body button,.body input,.body textarea,footer button", dr).forEach((x) => (x.disabled = true)); return; }
   $("#dSt").onclick = (e) => { const b = e.target.closest("button"); if (!b) return; const s = b.dataset.s;
     writeEstado(r, s === "Comprobado" ? { estatus: s, verificadoPor: S.auth.uid, fechaVerif: nowIso() } : { estatus: s }, "Estatus: " + s); };
@@ -196,7 +197,7 @@ export function openSiteEditor(id) {
   };
 }
 
-export function closeDrawer() { openCid = null; $("#drawer").hidden = true; $("#scrim").hidden = true; }
+export function closeDrawer() { openCid = null; const d = $("#drawer"); d.hidden = true; d.onclick = null; $("#scrim").hidden = true; }
 export const drawerOpenWithFocus = () => openCid && $("#drawer").contains(document.activeElement) && /INPUT|TEXTAREA/.test(document.activeElement.tagName) && document.activeElement.type !== "checkbox";
 
 // ================================================================ AVANCE
@@ -242,12 +243,14 @@ export function viewCampanas(main) {
     <div class="stack">${camps.map((c) => {
       const pers = S.periodos.filter((p) => p.campanaId === c.id).sort((a, b) => (a.orden || "").localeCompare(b.orden || ""));
       return `<div class="panel"><div class="row" style="justify-content:space-between;align-items:center"><div><h3 style="margin:0">${esc(c.nombre)} ${c.activo === false ? `<span class="pill p-cancelada">Archivada</span>` : ""}</h3><span class="note">${esc(c.cliente || "")} · <span class="mono">${esc(c.id)}</span> · creada ${fecha(c.creado)}</span></div>
-        ${ap ? `<button class="btn small" type="button" data-camp-act="${esc(c.id)}">${c.activo === false ? "Reactivar" : "Archivar"}</button>` : ""}</div>
+        ${ap ? `<div class="row"><button class="btn small" type="button" data-camp-edit="${esc(c.id)}">Editar nombre</button><button class="btn small" type="button" data-camp-act="${esc(c.id)}">${c.activo === false ? "Reactivar" : "Archivar"}</button></div>` : ""}</div>
         <div class="tablebox" style="margin-top:10px"><table><thead><tr><th>Periodo</th><th>Fechas</th><th>Soportes</th><th>Comprobados</th><th style="min-width:160px">Avance</th>${ap ? "<th></th>" : ""}</tr></thead><tbody>
-        ${pers.map((p) => { const k = counts(all.filter((r) => r.p.id === p.id)); return `<tr><td><b>${esc(p.periodo)}</b> <span class="mono">${esc(p.id)}</span> ${p.activo === false ? `<span class="pill p-cancelada">Archivado</span>` : ""}</td><td>${esc(p.fechas || "")}</td><td class="num">${k.total}</td><td class="num">${k.Comprobado}</td><td>${stackBar(k)}<span class="note">${pct(k.pct)}</span></td>${ap ? `<td><button class="btn small" type="button" data-per-act="${esc(p.id)}">${p.activo === false ? "Reactivar" : "Archivar"}</button></td>` : ""}</tr>`; }).join("")}
+        ${pers.map((p) => { const k = counts(all.filter((r) => r.p.id === p.id)); return `<tr><td><b>${esc(p.periodo)}</b> <span class="mono">${esc(p.id)}</span> ${p.activo === false ? `<span class="pill p-cancelada">Archivado</span>` : ""}</td><td>${esc(p.fechas || "")}</td><td class="num">${k.total}</td><td class="num">${k.Comprobado}</td><td>${stackBar(k)}<span class="note">${pct(k.pct)}</span></td>${ap ? `<td><div class="row" style="flex-wrap:nowrap"><button class="btn small primary" type="button" data-per-edit="${esc(p.id)}">Editar soportes</button><button class="btn small" type="button" data-per-act="${esc(p.id)}">${p.activo === false ? "Reactivar" : "Archivar"}</button></div></td>` : ""}</tr>`; }).join("")}
         </tbody></table></div></div>`;
     }).join("")}</div>`;
     main.onclick = async (e) => {
+      const ed = e.target.closest("[data-per-edit],[data-camp-edit]");
+      if (ed) { if (ed.dataset.perEdit) openPeriodEditor(ed.dataset.perEdit); else openCampaignEditor(ed.dataset.campEdit); return; }
       const b = e.target.closest("[data-camp-act],[data-per-act]"); if (!b) return;
       const isCamp = !!b.dataset.campAct, id = b.dataset.campAct || b.dataset.perAct;
       const cur = isCamp ? S.campanas.find((c) => c.id === id) : S.periodos.find((p) => p.id === id);
@@ -256,6 +259,94 @@ export function viewCampanas(main) {
     };
   };
   draw(); return draw;
+}
+
+// ================================================================ EDITAR CAMPAÑA Y PERIODOS
+export function openCampaignEditor(cid) {
+  const c = S.campanas.find((x) => x.id === cid); if (!c) return;
+  const dr = $("#drawer");
+  dr.innerHTML = `<header><div style="flex:1"><div class="mono">${esc(cid)}</div><h2>Editar campaña</h2></div><button class="btn" type="button" id="ceClose">Cerrar</button></header>
+  <div class="body"><label class="field"><span>Nombre</span><input type="text" id="ce-n" value="${esc(c.nombre)}"></label>
+  <label class="field"><span>Cliente</span><input type="text" id="ce-c" value="${esc(c.cliente || "")}"></label>
+  ${S.periodos.filter((p) => p.campanaId === cid).map((p) => `<label class="field"><span>Fechas · ${esc(p.periodo)}</span><input type="text" data-fp="${esc(p.id)}" value="${esc(p.fechas || "")}"></label>`).join("")}</div>
+  <footer><button class="btn primary" type="button" id="ceSave">Guardar</button></footer>`;
+  dr.hidden = false; $("#scrim").hidden = false;
+  $("#ceClose").onclick = closeDrawer;
+  $("#ceSave").onclick = async () => {
+    const nombre = $("#ce-n").value.trim(); if (!nombre) { toast("El nombre no puede quedar vacío"); return; }
+    const ops = [{ op: "update", path: "campanas/" + cid, fields: [[["nombre"], nombre], [["cliente"], $("#ce-c").value.trim()]] }];
+    for (const p of S.periodos.filter((x) => x.campanaId === cid)) {
+      ops.push({ op: "update", path: "periodos/" + p.id, fields: [[["campana"], nombre], [["fechas"], $(`[data-fp="${p.id}"]`).value.trim()]] });
+    }
+    try { await S.be.batch(ops); toast("Campaña actualizada"); closeDrawer(); } catch (e) { toast("No se pudo guardar"); }
+  };
+}
+
+// Sustituir, dar de baja o agregar soportes en un periodo. Las bajas quedan registradas con su motivo.
+export function openPeriodEditor(pid, focusSid = "") {
+  const dr = $("#drawer");
+  let q = "", addQ = "", accion = null; // accion: {tipo:'baja'|'sust', sid}
+  if (focusSid) q = focusSid;
+  const render = () => {
+    const p = S.periodos.find((x) => x.id === pid); if (!p) { closeDrawer(); return; }
+    const est = p.estado || {}, bajas = p.bajas || {};
+    const lista = (p.sitios || []).filter((sid) => { const s = site(sid) || {}; return matchQuery(q, sid, s.ub, s.sop, s.det, s.owner, s.alias || []); });
+    const resultados = (txt, excluir) => !txt.trim() ? [] : [...S.catalogo.entries()].filter(([id, s]) => !excluir.has(id) && s.activo !== false && matchQuery(txt, id, s.ub, s.sop, s.det, s.owner, s.alias || [])).slice(0, 8);
+    const enPeriodo = new Set(p.sitios || []);
+    const row = (sid) => { const s = site(sid) || { ub: sid }; const st = (est[sid] || {}).estatus || "Pendiente";
+      const open = accion && accion.sid === sid;
+      return `<div class="pe-row"><div style="min-width:0;flex:1"><b>${esc(s.ub)}</b><span class="sub">${esc(sid)} · ${esc(s.sop || "")} · ${esc(s.owner || "")}</span></div><span class="pill ${pillCls(st)}">${st}</span>
+        <div class="row" style="flex-wrap:nowrap"><button class="btn small" type="button" data-sust="${esc(sid)}">Sustituir</button><button class="btn small danger" type="button" data-baja="${esc(sid)}">Dar de baja</button></div>
+        ${open ? `<div class="pe-act"><label class="field"><span>Motivo</span><input type="text" id="pe-mot" placeholder="Ej. sitio no disponible, fallas técnicas" value="${esc(accion.motivo || "")}"></label>
+          ${accion.tipo === "sust" ? `<label class="field"><span>Buscar el soporte que lo reemplaza</span><input type="search" id="pe-sq" value="${esc(accion.q || "")}" placeholder="Ubicación, owner o ID"></label>
+            <div class="pe-res">${resultados(accion.q || "", enPeriodo).map(([id, x]) => `<button class="btn small" type="button" data-con="${esc(id)}">Sustituir por ${esc(id)} · ${esc(x.ub)} · ${esc(x.owner)}</button>`).join("") || `<span class="note">${accion.q ? "Sin resultados. Si el soporte es nuevo, primero dalo de alta en Carga de inventario." : "Escribe para buscar."}</span>`}</div>`
+          : `<div class="row"><button class="btn small danger" type="button" data-confirma-baja="${esc(sid)}">Confirmar baja</button><button class="btn small" type="button" data-cancel>Cancelar</button></div>`}</div>` : ""}</div>`; };
+    const keepFocus = document.activeElement && dr.contains(document.activeElement) ? { id: document.activeElement.id, pos: document.activeElement.selectionStart } : null;
+    dr.innerHTML = `<header><div style="flex:1;min-width:0"><div class="mono">${esc(p.id)}</div><h2>${esc(p.campana)} · ${esc(p.periodo)}</h2><div class="note">${(p.sitios || []).length} soportes${p.fechas ? " · " + esc(p.fechas) : ""}</div></div><button class="btn" type="button" id="peClose">Cerrar</button></header>
+    <div class="body">
+      <div class="panel" style="padding:12px"><label class="field"><span>Agregar un soporte a este periodo</span><input type="search" id="pe-add" value="${esc(addQ)}" placeholder="Ubicación, owner o ID"></label>
+        <div class="pe-res">${resultados(addQ, enPeriodo).map(([id, x]) => `<button class="btn small" type="button" data-add="${esc(id)}">Agregar ${esc(id)} · ${esc(x.ub)} · ${esc(x.owner)}</button>`).join("")}</div></div>
+      <label class="field"><span>Soportes del periodo</span><input type="search" id="pe-q" value="${esc(q)}" placeholder="Filtrar por ubicación, owner o ID"></label>
+      <div class="pe-list">${lista.map(row).join("") || `<span class="note">Ningún soporte coincide.</span>`}</div>
+      ${Object.keys(bajas).length ? `<details class="sec"><summary>Dados de baja (${Object.keys(bajas).length})</summary><div class="in pe-list">${Object.entries(bajas).map(([sid, b]) => { const s = site(sid) || { ub: sid };
+        return `<div class="pe-row"><div style="min-width:0;flex:1"><b>${esc(s.ub)}</b><span class="sub">${esc(sid)} · ${fecha(b.fecha)} · ${esc(nombreDe(b.por))}${b.motivo ? " · " + esc(b.motivo) : ""}${b.sustituidoPor ? " · sustituido por " + esc(b.sustituidoPor) : ""}</span></div>${enPeriodo.has(sid) ? "" : `<button class="btn small" type="button" data-react="${esc(sid)}">Reactivar</button>`}</div>`; }).join("")}</div></details>` : ""}
+    </div>`;
+    dr.hidden = false; $("#scrim").hidden = false;
+    if (keepFocus && keepFocus.id && document.getElementById(keepFocus.id)) { const el = document.getElementById(keepFocus.id); el.focus(); try { el.setSelectionRange(keepFocus.pos, keepFocus.pos); } catch (e) {} }
+    $("#peClose").onclick = closeDrawer;
+    $("#pe-q").oninput = (e) => { q = e.target.value; render(); };
+    $("#pe-add").oninput = (e) => { addQ = e.target.value; render(); };
+    if ($("#pe-sq")) $("#pe-sq").oninput = (e) => { accion.q = e.target.value; accion.motivo = $("#pe-mot").value; render(); };
+    if ($("#pe-mot")) $("#pe-mot").oninput = (e) => { accion.motivo = e.target.value; };
+  };
+  const write = async (fields, msg) => {
+    try { await S.be.batch([{ op: "update", path: "periodos/" + pid, fields }]); toast(msg); accion = null; render(); }
+    catch (e) { console.error(e); toast("No se pudo guardar. Revisa tus permisos."); }
+  };
+  dr.onclick = (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    const p = S.periodos.find((x) => x.id === pid); const sitios = [...(p.sitios || [])];
+    const motivo = () => ($("#pe-mot") ? $("#pe-mot").value.trim() : "");
+    if (b.dataset.baja) { accion = { tipo: "baja", sid: b.dataset.baja }; render(); }
+    else if (b.dataset.sust) { accion = { tipo: "sust", sid: b.dataset.sust, q: "" }; render(); }
+    else if (b.dataset.cancel !== undefined) { accion = null; render(); }
+    else if (b.dataset.confirmaBaja) {
+      const sid = b.dataset.confirmaBaja;
+      write([[["sitios"], sitios.filter((x) => x !== sid)], [["bajas", sid], { fecha: nowIso(), por: S.auth.uid, motivo: motivo() }]], "Soporte dado de baja del periodo");
+    } else if (b.dataset.con) {
+      const old = accion.sid, nu = b.dataset.con;
+      const i = sitios.indexOf(old); if (i >= 0) sitios[i] = nu; else sitios.push(nu);
+      const f = [[["sitios"], sitios], [["bajas", old], { fecha: nowIso(), por: S.auth.uid, motivo: motivo(), sustituidoPor: nu }]];
+      if ((p.bajas || {})[nu]) f.push([["bajas", nu], S.be.DEL]);
+      write(f, `Sustituido por ${nu}`);
+    } else if (b.dataset.add || b.dataset.react) {
+      const sid = b.dataset.add || b.dataset.react;
+      if (!sitios.includes(sid)) sitios.push(sid);
+      const f = [[["sitios"], sitios]]; if ((p.bajas || {})[sid]) f.push([["bajas", sid], S.be.DEL]);
+      addQ = ""; write(f, b.dataset.react ? "Soporte reactivado" : "Soporte agregado al periodo");
+    }
+  };
+  render();
 }
 
 // ================================================================ INVENTARIO
