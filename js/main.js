@@ -89,7 +89,7 @@ function go() {
   let r = location.hash.slice(1) || "avance";
   if (!ROUTES[r] || (ROUTES[r].min && !can(ROUTES[r].min))) r = "avance";
   route = r; closeDrawer();
-  document.querySelectorAll("[data-r]").forEach((a) => a.toggleAttribute("aria-current", a.dataset.r === r) || (a.dataset.r === r && a.setAttribute("aria-current", "page")));
+  document.querySelectorAll("[data-r]").forEach((a) => { if (a.dataset.r === r) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
   document.title = ROUTES[r].t + " · Comprobación Beeyond";
   const main = $("#main"); main.onclick = null; main.onchange = null; main.scrollTop = 0;
   redraw = ROUTES[r].v(main) || null;
