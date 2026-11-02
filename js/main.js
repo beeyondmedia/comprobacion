@@ -5,6 +5,16 @@ import { viewControl, viewAvance, viewCampanas, viewInventario, viewUsuarios, cl
 import { viewCargaCampana, viewCargaInventario, viewHistorial, pendingCount } from "./cargas.js";
 
 const app = $("#app");
+// Logo Beeyond (palabra con esquinas), toma el color del texto donde se coloca
+const LOGO = `<svg class="logo" viewBox="0 0 210 58" role="img" aria-label="Beeyond"><path d="M3 38v15h14" fill="none" stroke="currentColor" stroke-width="5"/><text x="20" y="44" font-family="Rubik,Arial,sans-serif" font-weight="600" font-size="44" textLength="166" lengthAdjust="spacingAndGlyphs" fill="currentColor">Beeyond</text><path d="M193 5h14v15" fill="none" stroke="currentColor" stroke-width="5"/></svg>`;
+const tema = () => (document.documentElement.dataset.theme === "dark" ? "dark" : "light");
+function toggleTema() {
+  const t = tema() === "dark" ? "light" : "dark";
+  if (t === "dark") document.documentElement.dataset.theme = "dark"; else delete document.documentElement.dataset.theme;
+  try { localStorage.setItem("bym-tema", t); } catch (e) {}
+  document.querySelectorAll("[data-tema]").forEach((b) => (b.textContent = temaLabel()));
+}
+const temaLabel = () => (tema() === "dark" ? "☀ Modo claro" : "☾ Modo oscuro");
 const ROUTES = {
   control: { t: "Control", v: viewControl, live: true }, avance: { t: "Avance", v: viewAvance, live: true },
   campanas: { t: "Campañas", v: viewCampanas, live: true }, inventario: { t: "Inventario", v: viewInventario, live: true },
@@ -61,13 +71,14 @@ function shell() {
   const nav = (id, label, extra = "") => `<a href="#${id}" data-r="${id}">${label}${extra}</a>`;
   app.innerHTML = `${S.be.mode === "demo" ? `<div class="demo"><b>Modo demostración:</b> los datos viven solo en este navegador. <button class="btn small" type="button" id="resetDemo">Reiniciar demo</button></div>` : ""}
   <div class="shell"><aside class="side">
-    <div class="brand"><b>Comprobación fotográfica</b><small>${esc(EMPRESA)}</small></div>
-    <nav class="navgroup" aria-label="Operación"><span>Operación</span>${nav("control", "Control")}${nav("avance", "Avance")}${nav("campanas", "Campañas")}</nav>
+    <div class="brand">${LOGO}<b>Comprobación fotográfica</b></div>
+    <nav class="navgroup" aria-label="Operación"><span>Operación</span>${nav("avance", "Avance")}${nav("control", "Control")}${nav("campanas", "Campañas")}</nav>
     <nav class="navgroup" aria-label="Cargas"><span>Cargas</span>${can("verificador") ? nav("carga-campana", "Nueva campaña") + nav("carga-inventario", "Carga de inventario") : ""}${nav("cargas", "Historial", ` <span class="badge" id="navBadge" hidden></span>`)}</nav>
     <nav class="navgroup" aria-label="Catálogo"><span>Catálogo</span>${nav("inventario", "Inventario")}${can("admin") ? nav("usuarios", "Usuarios") : ""}</nav>
-    <div class="me"><div><b>${esc(S.perfil.nombre || S.auth.email)}</b><div class="note">${esc(ROLES[S.perfil.rol] || S.perfil.rol)} · ${esc(S.auth.email)}</div></div><button class="btn small" type="button" id="logout">Salir</button></div>
+    <div class="me"><div><b>${esc(S.perfil.nombre || S.auth.email)}</b><div class="note">${esc(ROLES[S.perfil.rol] || S.perfil.rol)} · ${esc(S.auth.email)}</div></div><div class="row2"><button class="btn small themebtn" type="button" data-tema>${temaLabel()}</button><button class="btn small" type="button" id="logout">Salir</button></div></div>
   </aside><main class="main" id="main"><div class="empty" id="mainLoading">Cargando datos…</div></main></div>`;
   $("#logout").onclick = () => S.be.signOut();
+  document.querySelectorAll("[data-tema]").forEach((b) => (b.onclick = toggleTema));
   if ($("#resetDemo")) $("#resetDemo").onclick = () => S.be.resetDemo();
   route = "";
   refresh();
@@ -87,14 +98,16 @@ function go() {
 window.addEventListener("hashchange", go);
 
 function showLogin(msg) {
-  app.innerHTML = `<div class="login"><form id="lf" autocomplete="on">
-    <h1>Comprobación fotográfica</h1><p>${esc(EMPRESA)} · entra con tu correo @${esc(DOMINIO)}</p>
+  app.innerHTML = `<div class="login">${LOGO}<form id="lf" autocomplete="on">
+    <h1>Comprobación fotográfica</h1><p>Entra con tu correo @${esc(DOMINIO)}</p>
     ${S.be.mode === "demo" ? `<div class="msg warn">Modo demostración. Usuarios: admin@, aprobador@, verificador@ o consulta@${esc(DOMINIO)} · contraseña demo1234</div>` : ""}
     <label class="field"><span>Correo</span><input type="email" id="le" required autocomplete="username"></label>
     <label class="field"><span>Contraseña</span><input type="password" id="lp" required autocomplete="current-password"></label>
     <button class="btn primary" type="submit" id="lb">Entrar</button>
     <button class="btn" type="button" id="lr">Olvidé mi contraseña</button>
-    <div id="lm" ${msg ? "" : "hidden"} class="msg err">${esc(msg || "")}</div></form></div>`;
+    <div id="lm" ${msg ? "" : "hidden"} class="msg err">${esc(msg || "")}</div>
+    <button class="btn small" type="button" data-tema style="align-self:center">${temaLabel()}</button></form></div>`;
+  document.querySelectorAll("[data-tema]").forEach((b) => (b.onclick = toggleTema));
   const m = $("#lm");
   $("#lf").onsubmit = async (e) => {
     e.preventDefault(); $("#lb").disabled = true; m.hidden = true;
