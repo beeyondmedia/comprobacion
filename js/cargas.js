@@ -114,12 +114,13 @@ function buildCampaignDraft(parsed, nombre, cliente, archivo) {
     const row = mkRow(r); row.hoja = s.name;
     row.status = r.status ? String(r.status) : ""; row.coment = r.coment ? String(r.coment) : "";
     const neg = !!row.coment || NEG.test(norm(row.status));
+    const pi = r.hojaOrigen ? periodos.findIndex((p) => p.hoja === r.hojaOrigen) : -1;
     if (neg) {
       row.accion = "quitar";
       const where = periodos.findIndex((p) => p.filas.some((f) => f.dec === "id" && f.id === row.id));
-      row.perDest = where >= 0 ? "todos" : "todos";
+      row.perDest = pi >= 0 ? String(pi) : "todos";
       if (where < 0 && row.dec === "id") row.nota = "Este sitio no aparece en los periodos del archivo.";
-    } else if (row.status) { row.accion = "agregar"; row.perDest = "0"; }
+    } else if (row.status) { row.accion = "agregar"; row.perDest = pi >= 0 ? String(pi) : "0"; }
     else { row.accion = "ignorar"; row.perDest = "todos"; }
     if (row.accion === "quitar" && row.dec === "nuevo") row.dec = "omitir";
     sustituciones.push(row);

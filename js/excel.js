@@ -49,11 +49,12 @@ const COLS = {
   UBIC: ["UBICACION", "DIRECCION"], VENUE: ["VENUE TYPE", "FORMATO", "TIPO DE SOPORTE"],
   ESP: ["TIPO DE ESPACIO"], DET: ["DETALLE / POSICION", "DETALLE", "POSICION"],
   CIUDAD: ["CIUDAD", "PLAZA"], NETWORK: ["NETWORK"], OWNER: ["MEDIA OWNER", "PROVEEDOR"],
-  IDPROV: ["ID PROVEEDOR", "CODIGO DEL SITIO"], MEDIDAS: ["MEDIDAS"], LAT: ["LAT", "LATITUD"], LON: ["LONG", "LONGITUD", "LON"],
+  IDPROV: ["ID PROVEEDOR", "CODIGO DEL SITIO"], MEDIDAS: ["MEDIDAS", "SPECS"], LAT: ["LAT", "LATITUD"], LON: ["LONG", "LONGITUD", "LON"],
   ALIAS: ["NOMBRE(S) ORIGINAL(ES)", "NOMBRES ORIGINALES"], ACTIVO: ["ACTIVO"],
   TEMP: ["TEMPORALIDAD", "FECHAS"], STATUS: ["STATUS", "ESTATUS"], COMENT: ["COMENTARIO", "COMENTARIOS"],
-  PERIODO: ["PERIODO"],
+  PERIODO: ["PERIODO"], SLIDE: ["SLIDE", "# SLIDE"],
 };
+const FECHA_RX = /\b\d{1,2}\s*(DE\s+[A-Z]+\s+)?AL?\s+\d{1,2}|ENERO|FEBRERO|MARZO|ABRIL|MAYO|JUNIO|JULIO|AGOSTO|SEPTIEMBRE|OCTUBRE|NOVIEMBRE|DICIEMBRE/;
 export function findTable(rows) {
   for (let i = 0; i < Math.min(rows.length, 15); i++) {
     const r = (rows[i] || []).map((v) => norm(v));
@@ -62,7 +63,17 @@ export function findTable(rows) {
       for (const [k, names] of Object.entries(COLS)) {
         for (const n of names) { const j = r.indexOf(n); if (j >= 0 && map[k] === undefined) { map[k] = j; } }
       }
-      return { header: i, map, title: (rows.slice(0, i).flat().find((v) => typeof v === "string" && v.trim().length > 3) || "") };
+      // Columna de fechas sin encabezado (p. ej. "12 de octubre al 01 de noviembre")
+      if (map.TEMP === undefined) {
+        const sample = rows.slice(i + 1, i + 15);
+        for (let j = 0; j < r.length; j++) {
+          if (r[j] && !/^\s*$/.test(r[j])) continue;
+          const vals = sample.map((x) => norm(x && x[j])).filter(Boolean);
+          if (vals.length >= 2 && vals.filter((v) => FECHA_RX.test(v)).length / vals.length > 0.6) { map.TEMP = j; break; }
+        }
+      }
+      const pre = rows.slice(0, i).flat().filter((v) => typeof v === "string" && v.trim().length > 3);
+      return { header: i, map, title: pre.find((v) => /ZETABE|\|/i.test(v)) || pre[0] || "" };
     }
   }
   return null;
@@ -79,7 +90,7 @@ function tableRows(rows, t) {
       fila: i + 1, ubic: blank(ubic) ? "" : String(ubic).replace(/\n/g, " ").trim(), venue: g("VENUE"), esp: g("ESP"), det: g("DET"),
       ciudad: g("CIUDAD"), network: g("NETWORK"), owner: g("OWNER"), idprov: g("IDPROV"), medidas: g("MEDIDAS"),
       lat: num(g("LAT")), lon: num(g("LON")), id: g("ID"), idAnt: g("ID_ANT"), alias: g("ALIAS"), activo: g("ACTIVO"),
-      temp: g("TEMP"), status: g("STATUS"), coment: g("COMENT"), periodo: g("PERIODO"),
+      temp: g("TEMP"), status: g("STATUS"), coment: g("COMENT"), periodo: g("PERIODO"), slide: g("SLIDE"),
     });
   }
   return out;
@@ -110,10 +121,21 @@ export function parseCampaignWorkbook(wb, fileName) {
     if (hidden && periodo !== "Sustituciones") periodo = "Ignorar";
     const perCol = mode(data.map((r) => r.periodo && String(r.periodo).trim()));
     if (perCol && periodo === "Única") periodo = ["Previa", "Durante", "Única"].find((p) => norm(p) === norm(perCol)) || periodo;
-    sheets.push({ name, rows: data, periodo, fechas: String(mode(data.map((r) => r.temp && String(r.temp).trim())) || ""), title: String(t.title || "") });
+    const fechas = String(mode(data.map((r) => r.temp && String(r.temp).trim())) || "");
+    if (periodo !== "Sustituciones" && periodo !== "Ignorar") {
+      // Sustituciones escritas dentro del plan: filas marcadas "SUSTITUCIÓN" o sitios "afectada, se sustituye por…"
+      const inline = [], keep = [];
+      for (const r of data) {
+        if (/SUSTITU/.test(norm(r.slide))) { inline.push({ ...r, status: "Sustitución (en el plan)", coment: "", hojaOrigen: name }); continue; }
+        if (AFECTADA_RX.test(norm(r.ubic))) inline.push({ ...r, status: "", coment: "Marcado en el plan: " + String(r.ubic).trim(), hojaOrigen: name });
+        keep.push(r);
+      }
+      if (inline.length) { sheets.push({ name, rows: keep, periodo, fechas, title: String(t.title || "") }); sheets.push({ name: name + " · sustituciones", rows: inline, periodo: "Sustituciones", fechas: "", title: "", inline: true }); continue; }
+    }
+    sheets.push({ name, rows: data, periodo, fechas, title: String(t.title || "") });
   }
   const title = (sheets.find((s) => s.title) || {}).title || "";
-  let nombre = title.replace(/^.*?\|\s*/, "").replace(/_/g, " ").replace(/\s+/g, " ").trim();
+  let nombre = title.replace(/^.*?\|\s*/, "").replace(/^\s*ZETABE[\s_|-]*/i, "").replace(/_/g, " ").replace(/\s+/g, " ").trim();
   if (!nombre) nombre = fileName.replace(/\.[^.]+$/, "").replace(/[_]+/g, " ");
   return { sheets, nombre };
 }
@@ -133,8 +155,31 @@ export function buildIndex(sitios) {
   }
   return { byKey, sitios };
 }
-function tokens(s) { return new Set(norm(s).split(/[^A-Z0-9]+/).filter((t) => t.length > 1)); }
-function jaccard(a, b) { let i = 0; for (const t of a) if (b.has(t)) i++; return i / (a.size + b.size - i || 1); }
+export const AFECTADA_RX = /\bAFECTAD[AO]S?\b|SE SUSTITUYE|SUSTITUID[AO]/;
+const cutNotes = (s) => norm(s).split(AFECTADA_RX)[0].replace(/[,;\s]+$/, "");
+const STOP = new Set(["AV", "AVE", "AVENIDA", "BLVD", "CALLE", "DE", "DEL", "LA", "EL", "LOS", "LAS", "Y", "E", "NO", "NUM", "CP", "COL", "COLONIA", "A", "EN", "JUNTO", "FTE", "FRENTE",
+  "ZAPOPAN", "JALISCO", "JAL", "GUADALAJARA", "CDMX", "CIUDAD", "MEXICO", "MONTERREY", "NL", "NUEVO", "LEON", "EDOMEX"]);
+const FACE = new Set(["I", "II", "III", "IV", "NORTE", "SUR", "ORIENTE", "PONIENTE", "VISTA", "CRUZADA", "NATURAL", "FRONTAL", "B"]);
+function tokens(s) {
+  return new Set(norm(stripCodes(cutNotes(s)).name).split(/[^A-Z0-9]+/).filter((t) => t && !STOP.has(t) && !/^\d{5}$/.test(t)));
+}
+function lev1(a, b) { // ¿difieren a lo más en una letra?
+  if (a === b) return true; if (Math.abs(a.length - b.length) > 1 || Math.min(a.length, b.length) < 5) return false;
+  let i = 0, j = 0, e = 0;
+  while (i < a.length && j < b.length) { if (a[i] === b[j]) { i++; j++; continue; } if (++e > 1) return false; if (a.length > b.length) i++; else if (b.length > a.length) j++; else { i++; j++; } }
+  return e + (a.length - i) + (b.length - j) <= 1;
+}
+const has = (set, t) => { if (set.has(t)) return true; for (const x of set) if (lev1(x, t)) return true; return false; };
+// Qué tan contenido está el nombre más corto dentro del más largo (0 a 1) y si solo difieren en la cara.
+function compare(a, b) {
+  const [small, big] = a.size <= b.size ? [a, b] : [b, a];
+  if (!small.size) return { c: 0, face: false, n: 0 };
+  let hit = 0; for (const t of small) if (has(big, t)) hit++;
+  const c = hit / small.size;
+  const diff = [...a].filter((t) => !has(b, t)).concat([...b].filter((t) => !has(a, t)));
+  return { c, n: small.size, face: diff.length > 0 && diff.every((t) => FACE.has(t)) };
+}
+function jaccard(a, b) { let i = 0; for (const t of a) if (has(b, t)) i++; return i / (a.size + b.size - i || 1); }
 
 // Propone datos de un soporte nuevo a partir de una fila del Excel.
 export function proposeSite(r) {
@@ -162,7 +207,7 @@ export function matchRow(r, idx) {
   const { byKey, sitios } = idx;
   const own = normOwner(r.owner);
   if (r.id && sitios.has(norm(r.id))) return { tipo: "encontrado", id: norm(r.id), motivo: "ID" };
-  const keys = [key(r.ubic), key(stripCodes(r.ubic).name)];
+  const keys = [key(r.ubic), key(stripCodes(r.ubic).name), key(cutNotes(r.ubic)), key(stripCodes(cutNotes(r.ubic)).name)];
   if (r.venue && !["CENTRO COMERCIAL", "AEROPUERTO"].includes(normVenue(r.venue))) keys.push(key(r.venue + " " + r.ubic));
   let cands = new Set();
   for (const k of keys) for (const id of byKey.get(k) || []) cands.add(id);
@@ -177,20 +222,32 @@ export function matchRow(r, idx) {
     return { tipo: "dudoso", id: cands[0], opciones: [{ id: cands[0], motivo: "Mismo nombre, otro owner (" + s.owner + ")" }] };
   }
   if (cands.length > 1) return { tipo: "dudoso", id: cands[0], opciones: cands.slice(0, 6).map((id) => ({ id, motivo: "Mismo nombre" })) };
-  // sin coincidencia exacta: buscar por cercanía y parecido
-  const tk = tokens(stripCodes(r.ubic).name), ops = [];
+  // sin coincidencia exacta: nombre parecido (sin acentos, comas, códigos postales ni "Zapopan, Jalisco"…),
+  // tolerando una letra de diferencia (Contitucion/Constitucion), más cercanía y mismo owner
+  const tk = tokens(r.ubic), ops = [];
+  const city = norm(r.ciudad) === "EDOMEX" ? "CDMX" : norm(r.ciudad) || cityFromCoords(r.lat);
   for (const [id, s] of sitios) {
+    if (city && s.ciudad && s.ciudad !== city) continue;
     const d = isFinite(r.lat) && s.lat != null ? haversine([r.lat, r.lon], [s.lat, s.lon]) : Infinity;
+    let best = compare(tk, tokens(s.ub));
+    for (const a of s.alias || []) { const x = compare(tk, tokens(a)); if (x.c > best.c || (x.c === best.c && x.n > best.n)) best = x; }
     const sim = Math.max(jaccard(tk, tokens(s.ub)), ...(s.alias || []).map((a) => jaccard(tk, tokens(a))));
-    const sameOwner = own && s.owner === own;
-    let score = 0, motivo = "";
-    if (d < 80) { score += 2; motivo = `a ${Math.round(d)} m`; }
-    if (sim >= 0.5) { score += sim * 2; motivo += (motivo ? " · " : "") + `nombre parecido (${Math.round(sim * 100)}%)`; }
-    if (score >= 1 && sameOwner) { score += 1; motivo += " · mismo owner"; }
-    if (score >= 1.5) ops.push({ id, motivo, score });
+    const sameOwner = !!own && s.owner === own;
+    let score = 0; const why = [];
+    if (best.c === 1 && (best.n >= 2 || d < 500)) { score += 3; why.push(best.face ? "posible otra cara" : "mismo nombre (escrito distinto)"); }
+    else if (sim >= 0.5) { score += sim * 2; why.push(`nombre parecido (${Math.round(sim * 100)}%)`); }
+    if (d < 80) { score += 2; why.push(`a ${Math.round(d)} m`); } else if (d < 400 && score) { score += 1; why.push(`a ${Math.round(d)} m`); }
+    if (score && sameOwner) { score += 1; why.push("mismo owner"); }
+    if (score >= 1.5) ops.push({ id, motivo: why.join(" · "), score, fuerte: best.c === 1 && !best.face && sameOwner, cara: best.face });
   }
   ops.sort((a, b) => b.score - a.score);
-  if (ops.length) return { tipo: "dudoso", id: null, opciones: ops.slice(0, 6) };
+  if (ops.length) {
+    const top = ops[0];
+    // Muy parecido, mismo owner y sin otro candidato igual de bueno: se da por encontrado
+    if (top.fuerte && (ops.length === 1 || ops[1].score < top.score)) return { tipo: "encontrado", id: top.id, motivo: "Parecido", opciones: ops.slice(0, 6) };
+    const sugerido = !top.cara && top.score >= 4 && (!own || sitios.get(top.id).owner === own) ? top.id : null;
+    return { tipo: "dudoso", id: sugerido, opciones: ops.slice(0, 6).map(({ id, motivo }) => ({ id, motivo })) };
+  }
   return { tipo: "nuevo" };
 }
 function dist(r, s) { return s.lat != null ? haversine([r.lat, r.lon], [s.lat, s.lon]) : 1e9; }
