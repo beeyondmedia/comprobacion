@@ -3,7 +3,7 @@ rules_version = '2';
 // =====================================================================
 // Reglas de seguridad — Comprobación fotográfica Beeyond
 //   consulta    : lee todo
-//   verificador : + marca comprobaciones (solo el campo "estado" de los periodos) y sube cargas
+//   verificador : + marca comprobaciones y arte de referencia (campos "estado" y "refs" de los periodos) y sube cargas
 //   aprobador   : + aprueba cargas, escribe inventario, campañas y periodos
 //   admin       : + administra usuarios
 // Sin borrados físicos de datos de operación. Todo lo no declarado se niega.
@@ -57,7 +57,7 @@ service cloud.firestore {
     match /periodos/{id} {
       allow read: if active();
       allow create: if atLeast('aprobador');
-      allow update: if atLeast('aprobador') || (atLeast('verificador') && onlyKeys(['estado']));
+      allow update: if atLeast('aprobador') || (atLeast('verificador') && onlyKeys(['estado','refs']));
       allow delete: if false;
     }
 
