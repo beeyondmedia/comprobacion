@@ -12,7 +12,7 @@ App web interna para controlar la comprobación fotográfica de los soportes de 
 | Rol | Puede |
 |---|---|
 | Consulta | Ver control, avance, campañas e inventario; exportar a Excel |
-| Verificador | Lo anterior + marcar comprobaciones (fotos, Drive, PPT, estatus, ✔) y subir Excels de campañas o inventario para aprobación |
+| Verificador | Lo anterior + marcar comprobaciones (fotos, Drive, PPT, estatus, ✔), agregar el arte de referencia de cada periodo (links de Drive) y subir Excels de campañas o inventario para aprobación |
 | Aprobador | Lo anterior + aprobar o rechazar cargas **de otras personas**, archivar campañas |
 | Administrador | Todo + dar de alta usuarios, cambiar roles y desactivar usuarios. Puede aprobar sus propias cargas |
 
@@ -84,6 +84,6 @@ firestore.rules       reglas de seguridad (pegar en la consola de Firebase)
 - `users/{uid}`: nombre, email, rol, activo.
 - `catalogo/{CIUDAD}`: `sitios.{ID}` → tipo de espacio, venue type, ubicación, detalle, ciudad, network, owner, ID proveedor, medidas, lat, long, nombres originales, activo.
 - `campanas/{C01…}`: nombre, cliente, activo.
-- `periodos/{C01-P|D|U}`: campaña, periodo, fechas, `sitios[]`, `estado.{ID}` → estatus, fotos, drive, ppt, link, comentarios, verificó, fecha.
+- `periodos/{C01-P|D|U}`: campaña, periodo, fechas, `sitios[]`, `refs[]` (hasta 2 links de Drive con el arte de referencia), `bajas.{ID}` (motivo, fecha, sustituido por), `estado.{ID}` → estatus, fotos, drive, ppt, link, comentarios, verificó, fecha.
 - `cargas/{id}`: archivo subido, decisiones de revisión, estatus (pendiente, aprobada, rechazada, cancelada), quién subió y quién revisó.
 - `config/setup`: marca que ya existe el primer administrador.
