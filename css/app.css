@@ -184,7 +184,7 @@ td select{max-width:440px;width:100%}
 .toast{background:var(--ink);color:var(--bg)}
 .themebtn{display:inline-flex;align-items:center;gap:6px}
 .grid2f>*{min-width:0}
-.drawer .field input,.drawer .field select,.drawer .field textarea{width:100%}
+.drawer .field input:not([type=checkbox]),.drawer .field select,.drawer .field textarea{width:100%}
 .pe-list{display:flex;flex-direction:column;gap:6px}
 .pe-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
 .pe-act{width:100%;display:flex;flex-direction:column;gap:8px;padding-top:6px;border-top:1px dashed var(--line);margin-top:4px}
