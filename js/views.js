@@ -143,6 +143,7 @@ function openDrawer(cid) {
     <label class="field"><span>Link de la carpeta en Drive</span><input type="url" id="dLink" value="${esc(d.link || "")}" placeholder="https://drive.google.com/…"></label>
     ${d.link ? `<a href="${esc(d.link)}" target="_blank" rel="noopener">Abrir carpeta</a>` : ""}
     <label class="field"><span>Comentarios</span><textarea id="dCom" rows="4">${esc(d.comentarios || "")}</textarea></label>
+    <div class="field"><span>Arte de referencia · ${esc(r.p.periodo)}</span>${refsBlock(r.p)}</div>
   </div>
   <footer>${can("aprobador") ? `<button class="btn" type="button" id="dEditSite">Editar soporte</button><button class="btn" type="button" id="dEditPer" style="margin-right:auto">Sustituir o dar de baja</button>` : ""}<button class="btn" type="button" id="dSave">Guardar link y comentarios</button><button class="btn primary" type="button" id="dOk">${st === "Comprobado" ? "Comprobado ✔" : "Marcar comprobado ✔"}</button></footer>`;
   dr.hidden = false; $("#scrim").hidden = false;
@@ -244,11 +245,13 @@ export function viewCampanas(main) {
       const pers = S.periodos.filter((p) => p.campanaId === c.id).sort((a, b) => (a.orden || "").localeCompare(b.orden || ""));
       return `<div class="panel"><div class="row" style="justify-content:space-between;align-items:center"><div><h3 style="margin:0">${esc(c.nombre)} ${c.activo === false ? `<span class="pill p-cancelada">Archivada</span>` : ""}</h3><span class="note">${esc(c.cliente || "")} · <span class="mono">${esc(c.id)}</span> · creada ${fecha(c.creado)}</span></div>
         ${ap ? `<div class="row"><button class="btn small" type="button" data-camp-edit="${esc(c.id)}">Editar nombre</button><button class="btn small" type="button" data-camp-act="${esc(c.id)}">${c.activo === false ? "Reactivar" : "Archivar"}</button></div>` : ""}</div>
-        <div class="tablebox" style="margin-top:10px"><table><thead><tr><th>Periodo</th><th>Fechas</th><th>Soportes</th><th>Comprobados</th><th style="min-width:160px">Avance</th>${ap ? "<th></th>" : ""}</tr></thead><tbody>
-        ${pers.map((p) => { const k = counts(all.filter((r) => r.p.id === p.id)); return `<tr><td><b>${esc(p.periodo)}</b> <span class="mono">${esc(p.id)}</span> ${p.activo === false ? `<span class="pill p-cancelada">Archivado</span>` : ""}</td><td>${esc(p.fechas || "")}</td><td class="num">${k.total}</td><td class="num">${k.Comprobado}</td><td>${stackBar(k)}<span class="note">${pct(k.pct)}</span></td>${ap ? `<td><div class="row" style="flex-wrap:nowrap"><button class="btn small primary" type="button" data-per-edit="${esc(p.id)}">Editar soportes</button><button class="btn small" type="button" data-per-act="${esc(p.id)}">${p.activo === false ? "Reactivar" : "Archivar"}</button></div></td>` : ""}</tr>`; }).join("")}
+        <div class="tablebox" style="margin-top:10px"><table><thead><tr><th>Periodo</th><th>Fechas</th><th>Soportes</th><th>Comprobados</th><th style="min-width:160px">Avance</th><th>Arte</th>${ap ? "<th></th>" : ""}</tr></thead><tbody>
+        ${pers.map((p) => { const k = counts(all.filter((r) => r.p.id === p.id)); return `<tr><td><b>${esc(p.periodo)}</b> <span class="mono">${esc(p.id)}</span> ${p.activo === false ? `<span class="pill p-cancelada">Archivado</span>` : ""}</td><td>${esc(p.fechas || "")}</td><td class="num">${k.total}</td><td class="num">${k.Comprobado}</td><td>${stackBar(k)}<span class="note">${pct(k.pct)}</span></td><td>${(p.refs || []).length ? `<button class="btn small" type="button" data-ref-view="${esc(p.id)}">Ver (${(p.refs || []).length})</button>` : `<span class="note">Sin arte</span>`}</td>${ap ? `<td><div class="row" style="flex-wrap:nowrap"><button class="btn small" type="button" data-ref-edit="${esc(p.id)}">Arte de referencia</button><button class="btn small primary" type="button" data-per-edit="${esc(p.id)}">Editar soportes</button><button class="btn small" type="button" data-per-act="${esc(p.id)}">${p.activo === false ? "Reactivar" : "Archivar"}</button></div></td>` : ""}</tr>`; }).join("")}
         </tbody></table></div></div>`;
     }).join("")}</div>`;
     main.onclick = async (e) => {
+      const rf = e.target.closest("[data-ref-edit],[data-ref-view]");
+      if (rf) { if (rf.dataset.refEdit) openRefsEditor(rf.dataset.refEdit); else openRefsViewer(rf.dataset.refView); return; }
       const ed = e.target.closest("[data-per-edit],[data-camp-edit]");
       if (ed) { if (ed.dataset.perEdit) openPeriodEditor(ed.dataset.perEdit); else openCampaignEditor(ed.dataset.campEdit); return; }
       const b = e.target.closest("[data-camp-act],[data-per-act]"); if (!b) return;
@@ -259,6 +262,50 @@ export function viewCampanas(main) {
     };
   };
   draw(); return draw;
+}
+
+// ================================================================ ARTE DE REFERENCIA (links de Google Drive)
+const driveId = (u) => { const m = String(u || "").match(/\/d\/([\w-]{15,})/) || String(u || "").match(/[?&]id=([\w-]{15,})/); return m ? m[1] : null; };
+export function refPreview(ref) {
+  const u = String(ref.url || "").trim(); if (!u) return "";
+  const id = driveId(u);
+  if (id) return `<iframe class="ref-frame" src="https://drive.google.com/file/d/${esc(id)}/preview" allow="autoplay; fullscreen" loading="lazy" title="${esc(ref.titulo || "Arte de referencia")}"></iframe>`;
+  if (/\.(png|jpe?g|gif|webp)(\?|#|$)/i.test(u)) return `<img class="ref-frame" src="${esc(u)}" alt="${esc(ref.titulo || "Arte de referencia")}">`;
+  if (/\.(mp4|webm|mov)(\?|#|$)/i.test(u)) return `<video class="ref-frame" src="${esc(u)}" controls preload="metadata"></video>`;
+  return `<div class="ref-frame ref-none">Vista previa no disponible para este link</div>`;
+}
+export function refsBlock(p, compact = false) {
+  const refs = (p.refs || []).filter((r) => r && r.url);
+  if (!refs.length) return compact ? "" : `<div class="note">Este periodo todavía no tiene arte de referencia.${can("aprobador") ? " Agrégalo en Campañas › Arte de referencia." : ""}</div>`;
+  return `<div class="refs">${refs.map((r, i) => `<figure class="ref">${refPreview(r)}<figcaption><span>${esc(r.titulo || "Referencia " + (i + 1))}</span><a href="${esc(r.url)}" target="_blank" rel="noopener">Abrir en Drive</a></figcaption></figure>`).join("")}</div>`;
+}
+function openRefsViewer(pid) {
+  const p = S.periodos.find((x) => x.id === pid); if (!p) return;
+  const dr = $("#drawer");
+  dr.innerHTML = `<header><div style="flex:1;min-width:0"><div class="mono">${esc(p.id)}</div><h2>Arte de referencia</h2><div class="note">${esc(p.campana)} · ${esc(p.periodo)}</div></div><button class="btn" type="button" id="rvClose">Cerrar</button></header><div class="body">${refsBlock(p)}</div>`;
+  dr.hidden = false; $("#scrim").hidden = false; $("#rvClose").onclick = closeDrawer;
+}
+export function openRefsEditor(pid) {
+  const p = S.periodos.find((x) => x.id === pid); if (!p) return;
+  const dr = $("#drawer");
+  const refs = [0, 1].map((i) => ({ url: "", titulo: "", ...((p.refs || [])[i] || {}) }));
+  dr.innerHTML = `<header><div style="flex:1;min-width:0"><div class="mono">${esc(p.id)}</div><h2>Arte de referencia</h2><div class="note">${esc(p.campana)} · ${esc(p.periodo)}${p.fechas ? " · " + esc(p.fechas) : ""}</div></div><button class="btn" type="button" id="reClose">Cerrar</button></header>
+  <div class="body">
+    <p class="note">Pega el link de Google Drive de la imagen o el video (botón Compartir › Copiar vínculo). El archivo debe estar compartido con Beeyond Media o con cualquier persona que tenga el vínculo.</p>
+    ${refs.map((r, i) => `<div class="panel stack" style="padding:12px"><b>Referencia ${i + 1}</b>
+      <label class="field"><span>Título (opcional)</span><input type="text" id="re-t${i}" value="${esc(r.titulo)}" placeholder="Ej. Arte horizontal 1920x1080"></label>
+      <label class="field"><span>Link de Google Drive</span><input type="url" id="re-u${i}" value="${esc(r.url)}" placeholder="https://drive.google.com/file/d/…/view"></label>
+      <div id="re-p${i}">${refPreview(r)}</div></div>`).join("")}
+  </div><footer><button class="btn primary" type="button" id="reSave">Guardar referencias</button></footer>`;
+  dr.hidden = false; $("#scrim").hidden = false;
+  $("#reClose").onclick = closeDrawer;
+  [0, 1].forEach((i) => { let t; $("#re-u" + i).oninput = (e) => { clearTimeout(t); t = setTimeout(() => ($("#re-p" + i).innerHTML = refPreview({ url: e.target.value })), 500); }; });
+  $("#reSave").onclick = async () => {
+    const out = [0, 1].map((i) => ({ url: $("#re-u" + i).value.trim(), titulo: $("#re-t" + i).value.trim() })).filter((r) => r.url);
+    if (out.some((r) => !/^https?:\/\//i.test(r.url))) { toast("Revisa los links: deben empezar con https://"); return; }
+    try { await S.be.batch([{ op: "update", path: "periodos/" + pid, fields: [[["refs"], out]] }]); toast("Arte de referencia guardado"); closeDrawer(); }
+    catch (e) { toast("No se pudo guardar. Revisa tus permisos."); }
+  };
 }
 
 // ================================================================ EDITAR CAMPAÑA Y PERIODOS
