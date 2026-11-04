@@ -265,14 +265,29 @@ export function viewCampanas(main) {
 }
 
 // ================================================================ ARTE DE REFERENCIA (links de Google Drive)
-const driveId = (u) => { const m = String(u || "").match(/\/d\/([\w-]{15,})/) || String(u || "").match(/[?&]id=([\w-]{15,})/); return m ? m[1] : null; };
+// Reconoce los distintos formatos de link de Google Drive / Docs (archivo, carpeta, "open?id=", "uc?id=", /u/0/…)
+function driveRef(u) {
+  u = String(u || "").trim();
+  if (!/google\.com|googleusercontent\.com/i.test(u)) return null;
+  let m = u.match(/\/folders\/([\w-]{10,})/);
+  if (m) return { tipo: "carpeta", id: m[1] };
+  m = u.match(/docs\.google\.com\/(presentation|document|spreadsheets)\/(?:u\/\d+\/)?d\/([\w-]{10,})/);
+  if (m) return { tipo: "doc", id: m[2], app: m[1] };
+  m = u.match(/\/d\/([\w-]{10,})/) || u.match(/[?&]id=([\w-]{10,})/);
+  if (m) return { tipo: "archivo", id: m[1] };
+  if (/googleusercontent\.com/i.test(u)) return { tipo: "imagen" };
+  return null;
+}
 export function refPreview(ref) {
   const u = String(ref.url || "").trim(); if (!u) return "";
-  const id = driveId(u);
-  if (id) return `<iframe class="ref-frame" src="https://drive.google.com/file/d/${esc(id)}/preview" allow="autoplay; fullscreen" loading="lazy" title="${esc(ref.titulo || "Arte de referencia")}"></iframe>`;
-  if (/\.(png|jpe?g|gif|webp)(\?|#|$)/i.test(u)) return `<img class="ref-frame" src="${esc(u)}" alt="${esc(ref.titulo || "Arte de referencia")}">`;
+  const t = esc(ref.titulo || "Arte de referencia");
+  const d = driveRef(u);
+  if (d && d.tipo === "archivo") return `<iframe class="ref-frame" src="https://drive.google.com/file/d/${esc(d.id)}/preview" allow="autoplay; fullscreen" loading="lazy" title="${t}"></iframe>`;
+  if (d && d.tipo === "carpeta") return `<iframe class="ref-frame" src="https://drive.google.com/embeddedfolderview?id=${esc(d.id)}#grid" loading="lazy" title="${t}"></iframe>`;
+  if (d && d.tipo === "doc") return `<iframe class="ref-frame" src="https://docs.google.com/${d.app}/d/${esc(d.id)}/preview" loading="lazy" title="${t}"></iframe>`;
+  if ((d && d.tipo === "imagen") || /\.(png|jpe?g|gif|webp)(\?|#|$)/i.test(u)) return `<img class="ref-frame" src="${esc(u)}" alt="${t}">`;
   if (/\.(mp4|webm|mov)(\?|#|$)/i.test(u)) return `<video class="ref-frame" src="${esc(u)}" controls preload="metadata"></video>`;
-  return `<div class="ref-frame ref-none">Vista previa no disponible para este link</div>`;
+  return `<div class="ref-frame ref-none">No reconozco este link como archivo de Google Drive. Usa en Drive el botón Compartir › Copiar vínculo del archivo (o de la carpeta).</div>`;
 }
 export function refsBlock(p, compact = false) {
   const refs = (p.refs || []).filter((r) => r && r.url);
