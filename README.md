@@ -60,7 +60,13 @@ Los archivos de la carga inicial **no van en el repositorio** (es público). Sú
 - **Cambio de ID:** pon el ID actual en `ID ANTERIOR` y el nuevo en `ID`. Al aprobar, el soporte y todas sus comprobaciones pasan al ID nuevo; el anterior queda guardado como nombre original.
 - Soporte nuevo sin ID: se le asigna el siguiente de su ciudad.
 
-Nada se aplica hasta que un aprobador (distinto de quien subió el archivo) o un administrador lo aprueba. Todas las cargas quedan en **Historial**.
+**PPT de comprobación** (Verificador, Aprobador y Administrador; no necesita aprobación):
+- Eliges la campaña y el periodo y subes el `.pptx`. Una diapositiva = una ubicación: el nombre se toma del cuadro de texto de la izquierda y se cuentan las fotos de la campaña (imágenes grandes); fondos, logos, íconos y mapas no cuentan.
+- Antes de guardar ves cada diapositiva con el soporte que encontró (Coincide / Revisa / Sin coincidencia) y puedes cambiarlo o ajustar el número de fotos.
+- Si una diapositiva trae más de 5 fotos, se marcan 5 y te avisa. Si el soporte ya tenía fotos marcadas distintas, eliges entre usar la PPT o conservar lo marcado.
+- Al guardar se marcan Foto 1…N y "En PPT: Sí". El ✔ y el estatus no cambian.
+
+Nada de las cargas de Excel se aplica hasta que un aprobador (distinto de quien subió el archivo) o un administrador lo aprueba. Todas las cargas quedan en **Historial**.
 
 ## Costos
 - GitHub Pages con repositorio público: $0.
@@ -75,6 +81,8 @@ js/config.js          configuración de Firebase y dominio  ← editar al instal
 js/main.js            inicio de sesión, menú y rutas
 js/views.js           Control, Avance, Campañas, Inventario, Usuarios
 js/cargas.js          cargas de campaña e inventario, revisión, aprobación, historial
+js/carga-ppt.js       carga de la PPT de comprobación (cuenta fotos por ubicación)
+js/ppt.js             lectura del .pptx y búsqueda de cada diapositiva en el periodo
 js/excel.js           lectura de Excel, normalización y búsqueda de coincidencias
 js/backend-firebase.js / js/backend-demo.js   acceso a datos
 firestore.rules       reglas de seguridad (pegar en la consola de Firebase)

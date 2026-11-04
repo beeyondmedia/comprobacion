@@ -3,6 +3,7 @@ import { FIREBASE_CONFIG, DOMINIO, EMPRESA } from "./config.js";
 import { S, $, esc, can, ROLES, nowIso, toast } from "./core.js";
 import { viewControl, viewAvance, viewCampanas, viewInventario, viewUsuarios, closeDrawer, drawerOpenWithFocus } from "./views.js";
 import { viewCargaCampana, viewCargaInventario, viewHistorial, pendingCount } from "./cargas.js";
+import { viewCargaPpt } from "./carga-ppt.js";
 
 const app = $("#app");
 // Logo Beeyond (palabra con esquinas), toma el color del texto donde se coloca
@@ -20,6 +21,7 @@ const ROUTES = {
   campanas: { t: "Campañas", v: viewCampanas, live: true }, inventario: { t: "Inventario", v: viewInventario, live: true },
   "carga-campana": { t: "Nueva campaña", v: viewCargaCampana, min: "verificador" },
   "carga-inventario": { t: "Carga de inventario", v: viewCargaInventario, min: "verificador" },
+  "carga-ppt": { t: "PPT de comprobación", v: viewCargaPpt, min: "verificador" },
   cargas: { t: "Historial de cargas", v: viewHistorial, live: true }, usuarios: { t: "Usuarios", v: viewUsuarios, min: "admin", live: true },
 };
 let route = "", redraw = null, unsubs = [];
@@ -73,7 +75,7 @@ function shell() {
   <div class="shell"><aside class="side">
     <div class="brand">${LOGO}<b>Comprobación fotográfica</b></div>
     <nav class="navgroup" aria-label="Operación"><span>Operación</span>${nav("avance", "Avance")}${nav("control", "Control")}${nav("campanas", "Campañas")}</nav>
-    <nav class="navgroup" aria-label="Cargas"><span>Cargas</span>${can("verificador") ? nav("carga-campana", "Nueva campaña") + nav("carga-inventario", "Carga de inventario") : ""}${nav("cargas", "Historial", ` <span class="badge" id="navBadge" hidden></span>`)}</nav>
+    <nav class="navgroup" aria-label="Cargas"><span>Cargas</span>${can("verificador") ? nav("carga-ppt", "PPT de comprobación") + nav("carga-campana", "Nueva campaña") + nav("carga-inventario", "Carga de inventario") : ""}${nav("cargas", "Historial", ` <span class="badge" id="navBadge" hidden></span>`)}</nav>
     <nav class="navgroup" aria-label="Catálogo"><span>Catálogo</span>${nav("inventario", "Inventario")}${can("admin") ? nav("usuarios", "Usuarios") : ""}</nav>
     <div class="me"><div><b>${esc(S.perfil.nombre || S.auth.email)}</b><div class="note">${esc(ROLES[S.perfil.rol] || S.perfil.rol)} · ${esc(S.auth.email)}</div></div><div class="row2"><button class="btn small themebtn" type="button" data-tema>${temaLabel()}</button><button class="btn small" type="button" id="logout">Salir</button></div></div>
   </aside><main class="main" id="main"><div class="empty" id="mainLoading">Cargando datos…</div></main></div>`;
