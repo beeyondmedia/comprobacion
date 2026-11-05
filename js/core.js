@@ -8,7 +8,7 @@ export const S = {
   be: null, auth: null, perfil: null,
   users: new Map(), catalogo: new Map(), ciudadesDoc: new Set(),
   campanas: [], periodos: [], cargas: [],
-  F: { camp: "", per: "", city: "", owner: "", esp: "", st: "", q: "" },
+  F: { camp: "", per: "", city: "", owner: "", esp: "", st: "", q: "", desde: "", hasta: "" },
   loaded: new Set(),
 };
 try { Object.assign(S.F, JSON.parse(localStorage.getItem("bym-filtros") || "{}")); } catch (e) {}
@@ -47,6 +47,65 @@ export function allRows(periodos = periodosActivos()) {
   return out;
 }
 export const stOf = (r) => r.st.estatus || "Pendiente";
+
+// ---------- fechas de los periodos
+// Lee textos como "2 al 12 nov 2026", "17 de septiembre al 31 de octubre", "del 28 oct al 3 nov de 2026",
+// "02/11/2026 - 12/11/2026". Sin año: se usa el año en que se creó el periodo. Devuelve {ini, fin} "AAAA-MM-DD" o null.
+const MESES = { ENE: 1, FEB: 2, MAR: 3, ABR: 4, MAY: 5, JUN: 6, JUL: 7, AGO: 8, SEP: 9, SET: 9, OCT: 10, NOV: 11, DIC: 12 };
+const iso = (y, m, d) => `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+const okDate = (y, m, d) => { const t = new Date(Date.UTC(y, m - 1, d)); return t.getUTCMonth() === m - 1 && t.getUTCDate() === d; };
+export function parseFechas(txt, refYear = new Date().getFullYear()) {
+  const t = fold(txt).replace(/\bDE\b|\bDEL\b/g, " ").replace(/\s+/g, " ").trim();
+  if (!t) return null;
+  // numéricas: 02/11/2026 - 12/11/2026, 2/11 al 12/11
+  const num = [...t.matchAll(/\b(\d{1,2}) (\d{1,2})(?: (\d{2,4}))?\b/g)].filter((m) => +m[2] >= 1 && +m[2] <= 12);
+  const conMes = /[A-Z]{3}/.test(t.replace(/\b(AL|A|Y|HASTA)\b/g, ""));
+  let a = null, b = null;
+  if (!conMes && num.length >= 2) {
+    const y = (m) => (m[3] ? (m[3].length === 2 ? 2000 + +m[3] : +m[3]) : null);
+    a = { d: +num[0][1], m: +num[0][2], y: y(num[0]) }; b = { d: +num[1][1], m: +num[1][2], y: y(num[1]) };
+  } else {
+    // tokens: números (día o año) y meses en orden
+    const tk = [];
+    for (const w of t.split(" ")) {
+      if (/^\d{4}$/.test(w)) tk.push({ y: +w });
+      else if (/^\d{1,2}$/.test(w)) tk.push({ d: +w });
+      else { const k = w.slice(0, 3); if (MESES[k] && (w.length === 3 || w.startsWith(k))) tk.push({ m: MESES[k] }); }
+    }
+    const days = [], months = [], years = [];
+    tk.forEach((x, i) => { if (x.d) days.push(i); if (x.m) months.push(i); if (x.y) years.push(i); });
+    if (!months.length) return null;
+    if (!days.length) { // "Noviembre 2026": el mes completo
+      const y = years.length ? tk[years[0]].y : refYear, m1 = tk[months[0]].m, m2 = tk[months[months.length - 1]].m, y2 = m2 < m1 ? y + 1 : y;
+      return { ini: iso(y, m1, 1), fin: iso(y2, m2, new Date(Date.UTC(y2, m2, 0)).getUTCDate()) };
+    }
+    const d1 = tk[days[0]].d, d2 = days.length > 1 ? tk[days[1]].d : d1;
+    // mes de cada día: el primer mes que aparece después de él (o el último disponible)
+    const mesDe = (pos) => { const after = months.find((i) => i > pos); return tk[after ?? months[months.length - 1]].m; };
+    const yrDe = (pos) => { const after = years.find((i) => i > pos); return after != null ? tk[after].y : null; };
+    a = { d: d1, m: mesDe(days[0]), y: yrDe(days[0]) };
+    b = { d: d2, m: mesDe(days.length > 1 ? days[1] : days[0]), y: yrDe(days.length > 1 ? days[1] : days[0]) };
+  }
+  if (!a.y && !b.y) { a.y = refYear; b.y = b.m < a.m ? refYear + 1 : refYear; }
+  b.y = b.y || a.y;
+  a.y = a.y || (a.m > b.m ? b.y - 1 : b.y);
+  if (!okDate(a.y, a.m, a.d) || !okDate(b.y, b.m, b.d)) return null;
+  let ini = iso(a.y, a.m, a.d), fin = iso(b.y, b.m, b.d);
+  if (fin < ini) [ini, fin] = [fin, ini];
+  return { ini, fin };
+}
+// Rango del periodo: las fechas capturadas con calendario mandan; si no, se lee el texto.
+export function rangoPeriodo(p) {
+  if (p.inicio && p.fin) return { ini: p.inicio, fin: p.fin, manual: true };
+  const y = p.creado ? new Date(p.creado).getFullYear() : undefined;
+  return parseFechas(p.fechas, y);
+}
+export const enRango = (p, desde, hasta) => {
+  if (!desde && !hasta) return true;
+  const r = rangoPeriodo(p); if (!r) return null; // sin fechas reconocibles
+  return (!hasta || r.ini <= hasta) && (!desde || r.fin >= desde);
+};
+export const fechaCorta = (isoD) => isoD ? new Date(isoD + "T12:00:00").toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" }) : "";
 // Búsqueda: sin importar acentos, mayúsculas, signos ni el orden de las palabras.
 export const fold = (s) => String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
 export function matchQuery(q, ...fields) {
@@ -56,7 +115,9 @@ export function matchQuery(q, ...fields) {
 }
 export function filtered(rows, { noStatus = false } = {}) {
   const F = S.F;
-  return rows.filter((r) => (!F.camp || r.p.campana === F.camp) && (!F.per || r.p.periodo === F.per) &&
+  const fechaOk = new Map();
+  const okP = (p) => { if (!fechaOk.has(p.id)) fechaOk.set(p.id, enRango(p, F.desde, F.hasta) === true); return fechaOk.get(p.id); };
+  return rows.filter((r) => (!F.camp || r.p.campana === F.camp) && (!F.per || r.p.periodo === F.per) && okP(r.p) &&
     (!F.city || r.s.ciudad === F.city) && (!F.owner || r.s.owner === F.owner) && (!F.esp || r.s.esp === F.esp) &&
     (noStatus || !F.st || stOf(r) === F.st) &&
     matchQuery(F.q, r.s.ub, r.s.sop, r.s.det, r.s.id, r.s.owner, r.s.ciudad, r.s.idprov, r.s.alias || [], r.p.campana));

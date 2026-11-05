@@ -69,6 +69,8 @@ Los archivos de la carga inicial **no van en el repositorio** (es público). Sú
 
 **Duplicar campaña** (Aprobador y Administrador, en Campañas): crea una campaña nueva con los mismos periodos y soportes activos (sin los dados de baja). Eliges nombre, cliente, versión, qué periodos copiar y sus fechas. Fotos, checks y arte empiezan en cero; después se ajusta cada periodo con "Editar soportes".
 
+**Filtro de fechas** (Avance y Control, también aplica al Excel exportado): eliges *desde* y *hasta* en el calendario y salen los periodos vigentes en algún día de ese rango. Las fechas se leen del texto de cada periodo ("2 al 12 nov 2026", "17 de septiembre al 31 de octubre"…); si el texto no tiene año se toma el del alta del periodo. Los periodos cuyo texto no se entiende aparecen aparte en "Sin fechas reconocibles"; en Campañas › Editar se les pone inicio y fin con calendario.
+
 **Versión:** campo libre de cada campaña (por ejemplo "V2 · 10 nov"), se escribe en Editar o al duplicar. Se ve junto al nombre y sale en el Excel exportado.
 
 Nada de las cargas de Excel se aplica hasta que un aprobador (distinto de quien subió el archivo) o un administrador lo aprueba. Todas las cargas quedan en **Historial**.
@@ -97,6 +99,6 @@ firestore.rules       reglas de seguridad (pegar en la consola de Firebase)
 - `users/{uid}`: nombre, email, rol, activo.
 - `catalogo/{CIUDAD}`: `sitios.{ID}` → tipo de espacio, venue type, ubicación, detalle, ciudad, network, owner, ID proveedor, medidas, lat, long, nombres originales, activo.
 - `campanas/{C01…}`: nombre, cliente, versión, activo, duplicadaDe.
-- `periodos/{C01-P|D|U}`: campaña, periodo, fechas, `sitios[]`, `refs[]` (hasta 2 links de Drive con el arte de referencia), `bajas.{ID}` (motivo, fecha, sustituido por), `estado.{ID}` → estatus, fotos, drive, ppt, link, comentarios, verificó, fecha.
+- `periodos/{C01-P|D|U}`: campaña, periodo, fechas (texto), inicio y fin (solo si se pusieron a mano con calendario), `sitios[]`, `refs[]` (hasta 2 links de Drive con el arte de referencia), `bajas.{ID}` (motivo, fecha, sustituido por), `estado.{ID}` → estatus, fotos, drive, ppt, link, comentarios, verificó, fecha.
 - `cargas/{id}`: archivo subido, decisiones de revisión, estatus (pendiente, aprobada, rechazada, cancelada), quién subió y quién revisó.
 - `config/setup`: marca que ya existe el primer administrador.

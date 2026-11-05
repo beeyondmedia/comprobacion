@@ -64,7 +64,7 @@ h1,h2,h3{text-wrap:balance;color:var(--ink)}
 }
 
 /* ---------- controles */
-select,input[type=text],input[type=email],input[type=password],input[type=search],input[type=number],input[type=url],textarea{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:7px 9px;min-width:0}
+select,input[type=date],input[type=text],input[type=email],input[type=password],input[type=search],input[type=number],input[type=url],textarea{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:7px 9px;min-width:0}
 .btn{border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:7px 13px;cursor:pointer;font-weight:600;font-size:13px;white-space:nowrap}
 .btn:hover{background:var(--surface-2)}
 .btn.primary{background:var(--grad);color:#fff;border-color:transparent}
@@ -196,3 +196,7 @@ td select{max-width:440px;width:100%}
 .ref-none{display:grid;place-items:center;color:var(--muted);font-size:12px;padding:10px;text-align:center}
 .ref figcaption{display:flex;justify-content:space-between;gap:8px;padding:6px 9px;font-size:12px;background:var(--surface)}
 .ref figcaption span{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.daterange{display:flex;gap:4px;align-items:center;text-transform:none;letter-spacing:0;font-weight:400}
+.daterange input{width:140px}
+:root[data-theme="dark"] input[type=date]{color-scheme:dark}

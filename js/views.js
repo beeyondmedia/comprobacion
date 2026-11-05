@@ -1,6 +1,6 @@
 // Vistas de operación: Control, Avance, Campañas, Inventario y Usuarios.
 import { S, $, $$, esc, opt, pct, fecha, nowIso, nombreDe, pillCls, toast, can, saveF, ESTATUS, ROLES,
-  allRows, stOf, filtered, counts, stackBar, summaryHTML, periodosActivos, site, matchQuery, fold, porNombre, cleanSite } from "./core.js";
+  allRows, stOf, filtered, counts, stackBar, summaryHTML, periodosActivos, site, matchQuery, fold, porNombre, cleanSite, parseFechas, rangoPeriodo, enRango, fechaCorta } from "./core.js";
 import { downloadXlsx } from "./excel.js";
 import { DOMINIO } from "./config.js";
 
@@ -18,6 +18,7 @@ export function filtersHTML({ status = true, exportBtn = true } = {}) {
     <label>Media owner<select data-f="owner">${opt("", "Todos")}${[...new Set(sites.map((s) => s.owner))].filter(Boolean).sort().map((c) => opt(c, c, F.owner === c)).join("")}</select></label>
     <label class="hide-sm">Espacio<select data-f="esp">${opt("", "Todos")}${["CENTRO COMERCIAL", "AEROPUERTO", "CALLE"].map((c) => opt(c, c, F.esp === c)).join("")}</select></label>
     ${status ? `<label>Estatus<select data-f="st">${opt("", "Todos")}${ESTATUS.map((c) => opt(c, c, F.st === c)).join("")}</select></label>` : ""}
+    <label>Fechas<div class="daterange"><input type="date" data-fd="desde" value="${esc(F.desde)}" aria-label="Desde" title="Desde"><span>a</span><input type="date" data-fd="hasta" value="${esc(F.hasta)}" min="${esc(F.desde)}" aria-label="Hasta" title="Hasta"></div></label>
     <label class="grow">Buscar<input type="search" data-f="q" value="${esc(F.q)}" placeholder="Ubicación, soporte o ID"></label>
     ${Object.entries(F).some(([k, v]) => v && (status || k !== "st")) ? `<button class="btn" type="button" id="clearF">Quitar filtros</button>` : ""}
     ${exportBtn ? `<button class="btn" type="button" id="exportBtn">Exportar a Excel</button>` : ""}
@@ -27,6 +28,11 @@ export function bindFilters(root, rerender) {
   $$("select[data-f]", root).forEach((el) => el.addEventListener("change", () => { S.F[el.dataset.f] = el.value; saveF(); rerender(); }));
   const q = $("input[data-f=q]", root);
   if (q) q.addEventListener("input", () => { S.F.q = q.value; saveF(); rerender(true); });
+  $$("input[data-fd]", root).forEach((el) => el.addEventListener("change", () => {
+    S.F[el.dataset.fd] = el.value;
+    if (S.F.desde && S.F.hasta && S.F.hasta < S.F.desde) { if (el.dataset.fd === "desde") S.F.hasta = S.F.desde; else S.F.desde = S.F.hasta; }
+    saveF(); rerender();
+  }));
   $$("[data-seg=per] button", root).forEach((b) => b.addEventListener("click", () => { S.F.per = b.dataset.v; saveF(); rerender(); }));
   const cf = $("#clearF", root); if (cf) cf.addEventListener("click", () => { for (const k of Object.keys(S.F)) S.F[k] = ""; saveF(); rerender(); });
   const ex = $("#exportBtn", root); if (ex) ex.addEventListener("click", () => exportControl(!$("select[data-f=st]", root)));
@@ -59,6 +65,21 @@ function bindShortcuts(root, onSame) {
   root.addEventListener("keydown", (e) => { if (e.key !== "Enter" && e.key !== " ") return; const el = e.target.closest("[data-goto-st],[data-goto-camp],[data-goto-key]"); if (el) { e.preventDefault(); act(el); } });
 }
 
+// Con filtro de fechas, los periodos cuyo texto de fechas no se entiende quedan fuera: se avisan aparte.
+export function sinFechasHTML() {
+  if (!S.F.desde && !S.F.hasta) return "";
+  const lst = periodosActivos().filter((p) => (!S.F.camp || p.campana === S.F.camp) && (!S.F.per || p.periodo === S.F.per) && enRango(p, S.F.desde, S.F.hasta) === null);
+  if (!lst.length) return "";
+  const ap = can("aprobador");
+  return `<details class="sec" id="sinF"><summary>Sin fechas reconocibles <span class="pill p-dudoso">${lst.length} periodo${lst.length === 1 ? "" : "s"}</span> <span class="note">no entran en el filtro de fechas</span></summary><div class="in">
+    <div class="note" style="margin-bottom:8px">${ap ? "Ponles inicio y fin con el calendario en Editar." : "Pide a un aprobador que les ponga inicio y fin en Campañas › Editar."}</div>
+    <div class="tablebox"><table><tbody>${lst.map((p) => `<tr><td><b>${esc(p.campana)}</b> · ${esc(p.periodo)}</td><td>${esc(p.fechas || "(sin fechas)")}</td><td class="num">${(p.sitios || []).length} soportes</td>
+    <td>${ap ? `<button class="btn small" type="button" data-fix-fechas="${esc(p.campanaId)}">Editar fechas</button>` : ""}</td></tr>`).join("")}</tbody></table></div></div></details>`;
+}
+function bindSinFechas(root) {
+  root.addEventListener("click", (e) => { const b = e.target.closest("[data-fix-fechas]"); if (b) openCampaignEditor(b.dataset.fixFechas); });
+}
+
 // ================================================================ CONTROL
 // Cada una de las 5 fotos se marca por separado (ángulos o vistas distintas).
 export const fotosSel = (st) => Array.isArray(st.fotosSel) && st.fotosSel.length === 5 ? st.fotosSel.map(Boolean) : [1, 2, 3, 4, 5].map((n) => n <= (st.fotos || 0));
@@ -73,10 +94,11 @@ export function viewControl(main) {
     const all = allRows();
     const rows = filtered(all);
     const write = can("verificador");
-    if (!keepFocus) main.innerHTML = `<div class="pagehead"><h1>Control de comprobación</h1></div>${filtersHTML()}<div class="summary" id="summary"></div>
+    if (!keepFocus) main.innerHTML = `<div class="pagehead"><h1>Control de comprobación</h1></div>${filtersHTML()}<div id="sinFbox"></div><div class="summary" id="summary"></div>
       <div class="tablebox"><table><thead><tr><th title="Comprobado">✔</th><th>Ubicación</th><th class="hide-sm">ID</th><th>Owner</th><th class="hide-sm">Ciudad</th><th>Campaña · periodo</th><th>Fotos</th><th class="hide-sm">Drive</th><th class="hide-sm">PPT</th><th>Estatus</th><th class="hide-sm">Verificó</th></tr></thead><tbody id="rows"></tbody></table>
       <div class="empty" id="noRows" hidden></div><div class="more" id="moreBox" hidden><button class="btn" id="moreBtn" type="button"></button></div></div>`;
-    if (!keepFocus) { bindFilters(main, draw); bindShortcuts($("#summary"), () => { shown = 150; draw(); }); }
+    if (!keepFocus) { bindFilters(main, draw); bindShortcuts($("#summary"), () => { shown = 150; draw(); }); bindSinFechas($("#sinFbox")); }
+    { const open = $("#sinF")?.open; $("#sinFbox").innerHTML = sinFechasHTML(); if (open && $("#sinF")) $("#sinF").open = true; }
     $("#summary").innerHTML = summaryHTML(counts(filtered(all, { noStatus: true })), S.F.st);
     $("#rows").innerHTML = rows.slice(0, shown).map((r) => {
       const st = stOf(r), sel = fotosSel(r.st), f = sel.filter(Boolean).length;
@@ -211,19 +233,20 @@ function rowbars(groups, byPending, fkey) {
 export function viewAvance(main) {
   const draw = (keep) => {
     if (!keep) {
-      main.innerHTML = `<div class="pagehead"><h1>Avance</h1><span class="note">Da clic en cualquier porcentaje, campaña o fila para ver esos soportes en Control.</span></div>${filtersHTML({ status: false })}<div class="summary" id="sum"></div>
+      main.innerHTML = `<div class="pagehead"><h1>Avance</h1><span class="note">Da clic en cualquier porcentaje, campaña o fila para ver esos soportes en Control.</span></div>${filtersHTML({ status: false })}<div id="sinFbox"></div><div class="summary" id="sum"></div>
       <div class="legend"><span><b style="background:var(--ok)"></b>Comprobado</span><span><b style="background:var(--warn)"></b>En revisión</span><span><b style="background:var(--bad)"></b>Con observaciones</span><span><b style="background:var(--idle-soft);border:1px solid var(--line)"></b>Pendiente</span></div>
       <div class="cards" id="cards"></div>
       <div class="grid2"><div class="panel"><h3>Por media owner</h3><p class="note" style="margin:-6px 0 10px">Ordenado por pendientes: a quién pedir fotos primero.</p><div id="byOwner"></div></div>
       <div class="panel"><h3>Por ciudad</h3><div id="byCity"></div><h3 style="margin-top:18px">Por tipo de espacio</h3><div id="byEsp"></div><h3 style="margin-top:18px">Por venue type</h3><div id="byVenue"></div></div></div>`;
-      bindFilters(main, draw); bindShortcuts(main);
+      bindFilters(main, draw); bindShortcuts(main); bindSinFechas($("#sinFbox"));
     }
+    { const open = $("#sinF")?.open; $("#sinFbox").innerHTML = sinFechasHTML(); if (open && $("#sinF")) $("#sinF").open = true; }
     const all = allRows(), rows = filtered(all, { noStatus: true });
     $("#sum").innerHTML = summaryHTML(counts(rows));
     $("#cards").innerHTML = periodosActivos().map((p) => {
       const rs = rows.filter((r) => r.p.id === p.id); if (!rs.length) return "";
       const k = counts(rs);
-      return `<div class="card click" role="button" tabindex="0" data-goto-camp="${esc(p.campana)}" data-goto-per="${esc(p.periodo)}" title="Ver en Control"><div><div class="t">${esc(p.campana)}</div><div class="note">${esc(p.periodo)}${p.fechas ? " · " + esc(p.fechas) : ""}</div></div><div class="big">${pct(k.pct)}</div>${stackBar(k)}<div class="note">${k.Comprobado} de ${k.total} comprobados · ${k.Pendiente} pendientes</div></div>`;
+      return `<div class="card click" role="button" tabindex="0" data-goto-camp="${esc(p.campana)}" data-goto-per="${esc(p.periodo)}" title="Ver en Control"><div><div class="t">${esc(p.campana)}</div><div class="note">${esc(p.periodo)}${p.fechas ? " · " + esc(p.fechas) : (() => { const r = rangoPeriodo(p); return r ? " · " + fechaCorta(r.ini) + " – " + fechaCorta(r.fin) : ""; })()}</div></div><div class="big">${pct(k.pct)}</div>${stackBar(k)}<div class="note">${k.Comprobado} de ${k.total} comprobados · ${k.Pendiente} pendientes</div></div>`;
     }).join("") || `<div class="empty">No hay campañas con estos filtros.</div>`;
     $("#byOwner").innerHTML = rowbars(groupBy(rows, (r) => r.s.owner), true, "owner");
     $("#byCity").innerHTML = rowbars(groupBy(rows, (r) => r.s.ciudad), false, "city");
@@ -332,16 +355,31 @@ export function openCampaignEditor(cid) {
   <div class="body"><label class="field"><span>Nombre</span><input type="text" id="ce-n" value="${esc(c.nombre)}"></label>
   <label class="field"><span>Cliente</span><input type="text" id="ce-c" value="${esc(c.cliente || "")}"></label>
   <label class="field"><span>Versión</span><input type="text" id="ce-v" value="${esc(c.version || "")}" placeholder="Ej. V2 · 10 nov"></label>
-  ${S.periodos.filter((p) => p.campanaId === cid).map((p) => `<label class="field"><span>Fechas · ${esc(p.periodo)}</span><input type="text" data-fp="${esc(p.id)}" value="${esc(p.fechas || "")}"></label>`).join("")}</div>
+  ${S.periodos.filter((p) => p.campanaId === cid).map((p) => { const r = rangoPeriodo(p) || {}; return `<div class="panel stack" style="padding:10px"><b>${esc(p.periodo)}</b>
+    <label class="field"><span>Fechas (como se muestran)</span><input type="text" data-fp="${esc(p.id)}" value="${esc(p.fechas || "")}" placeholder="2 al 12 nov 2026"></label>
+    <div class="grid2f"><label class="field"><span>Inicio</span><input type="date" data-fi="${esc(p.id)}" value="${esc(r.ini || "")}"></label><label class="field"><span>Fin</span><input type="date" data-ff="${esc(p.id)}" value="${esc(r.fin || "")}"></label></div>
+    <div class="note" data-fn="${esc(p.id)}">${r.ini ? (r.manual ? "Fechas puestas con calendario." : "Leídas del texto; corrígelas si no son correctas.") : "No pude leer el texto: pon inicio y fin para que entre en el filtro de fechas."}</div></div>`; }).join("")}</div>
   <footer><button class="btn primary" type="button" id="ceSave">Guardar</button></footer>`;
   dr.hidden = false; $("#scrim").hidden = false;
   $("#ceClose").onclick = closeDrawer;
+  // al cambiar el texto, se vuelven a leer inicio y fin (si no se habían puesto a mano)
+  dr.querySelectorAll("[data-fp]").forEach((el) => el.addEventListener("input", () => {
+    const id = el.dataset.fp, p = S.periodos.find((x) => x.id === id), r = parseFechas(el.value, p.creado ? new Date(p.creado).getFullYear() : undefined);
+    if (r && !dr.querySelector(`[data-fi="${id}"]`).dataset.mano) { dr.querySelector(`[data-fi="${id}"]`).value = r.ini; dr.querySelector(`[data-ff="${id}"]`).value = r.fin; }
+  }));
+  dr.querySelectorAll("[data-fi],[data-ff]").forEach((el) => el.addEventListener("change", () => { const id = el.dataset.fi || el.dataset.ff; dr.querySelector(`[data-fi="${id}"]`).dataset.mano = "1"; }));
   $("#ceSave").onclick = async () => {
     const nombre = $("#ce-n").value.trim(); if (!nombre) { toast("El nombre no puede quedar vacío"); return; }
     if (S.campanas.some((x) => x.id !== cid && fold(x.nombre) === fold(nombre))) { toast("Ya existe otra campaña con ese nombre"); return; }
     const ops = [{ op: "update", path: "campanas/" + cid, fields: [[["nombre"], nombre], [["cliente"], $("#ce-c").value.trim()], [["version"], $("#ce-v").value.trim()]] }];
     for (const p of S.periodos.filter((x) => x.campanaId === cid)) {
-      ops.push({ op: "update", path: "periodos/" + p.id, fields: [[["campana"], nombre], [["fechas"], $(`[data-fp="${p.id}"]`).value.trim()]] });
+      const txt = $(`[data-fp="${p.id}"]`).value.trim(), ini = $(`[data-fi="${p.id}"]`).value, fin = $(`[data-ff="${p.id}"]`).value;
+      if ((ini && !fin) || (!ini && fin)) { toast(`${p.periodo}: pon inicio y fin, o deja los dos vacíos`); return; }
+      if (ini && fin && fin < ini) { toast(`${p.periodo}: el fin es antes del inicio`); return; }
+      // si coinciden con lo que se lee del texto no se guardan aparte (así siguen al texto si después lo cambias)
+      const leido = parseFechas(txt, p.creado ? new Date(p.creado).getFullYear() : undefined);
+      const mano = ini && fin && !(leido && leido.ini === ini && leido.fin === fin);
+      ops.push({ op: "update", path: "periodos/" + p.id, fields: [[["campana"], nombre], [["fechas"], txt], [["inicio"], mano ? ini : ""], [["fin"], mano ? fin : ""]] });
     }
     try { await S.be.batch(ops); toast("Campaña actualizada"); closeDrawer(); } catch (e) { toast("No se pudo guardar"); }
   };
