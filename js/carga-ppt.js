@@ -53,7 +53,7 @@ export function viewCargaPpt(main) {
       <label class="field"><span>Periodo</span><select id="pPer"></select></label></div>
       <div class="note" id="pInfo">Solo se buscan las ubicaciones de ese periodo.</div></div>
     <div class="drop" id="pdrop"><b>Sube la presentación de comprobación (.pptx)</b><span class="note">Arrastra el archivo aquí o</span><label class="btn primary">Elegir archivo<input type="file" id="pdrop-in" accept=".pptx" hidden></label><div id="pmsg" class="note" hidden></div></div>
-    <div class="panel note">La app lee cada diapositiva: toma el nombre de la ubicación del cuadro de texto de la izquierda y cuenta las fotos de la campaña (las imágenes grandes); fondos, logos, íconos y mapas no cuentan. Antes de guardar te muestra lo que encontró para que lo revises. Se marcan Foto 1…N (máximo 5) y "En PPT: Sí"; el ✔ y el estatus no cambian.</div></div>`;
+    <div class="panel note">La app lee cada diapositiva: toma el nombre de la ubicación del cuadro de texto de la izquierda y cuenta las fotos de la campaña (las imágenes grandes); fondos, logos, íconos y mapas no cuentan. Antes de guardar te muestra lo que encontró para que lo revises. Se marcan Foto 1…N (máximo 5), "En PPT: Sí" y "En Drive: Sí", y el soporte queda como Comprobado (✔); los que están "Con observaciones" conservan ese estatus.</div></div>`;
     const fillPer = () => {
       const lst = pers.filter((p) => p.campana === camp);
       if (!lst.some((p) => p.id === pid)) pid = lst.length === 1 ? lst[0].id : "";
@@ -273,7 +273,7 @@ export function viewCargaPpt(main) {
   let confirmarBajas = false;
   async function apply() {
     const p = per(), fields = [], now = nowIso(), ops = [];
-    let n = 0, keep = 0;
+    let n = 0, keep = 0, nOk = 0, nObs = 0;
     // altas nuevas: siguiente ID de su ciudad
     const porCiudad = new Map(), taken = new Set();
     for (const r of rows) if (r.sid && r.sid.startsWith("NUEVO:")) { const c = r.nuevo.ciudad; if (!porCiudad.has(c)) porCiudad.set(c, []); porCiudad.get(c).push(r); }
@@ -297,6 +297,9 @@ export function viewCargaPpt(main) {
       const usarPpt = !(cn > 0 && cn !== r.n && r.dec === "keep");
       const next = { ...c, ppt: true, fotosPpt: r.cara ? r.n : r.fotos, fotosOrigen: fileName, actualizadoPor: S.auth.uid, actualizado: now };
       if (usarPpt) { next.fotosSel = [1, 2, 3, 4, 5].map((x) => x <= r.n); next.fotos = r.n; n++; } else keep++;
+      // si está en la PPT también está en Drive: queda comprobado (salvo que tenga observaciones)
+      next.drive = true;
+      if (next.estatus !== "Con observaciones") { if (next.estatus !== "Comprobado") { next.verificadoPor = S.auth.uid; next.fechaVerif = now; nOk++; } next.estatus = "Comprobado"; } else nObs++;
       fields.push([["estado", r.sid], next]);
     }
     if (!fields.length) { toast("No hay fotos, soportes para agregar ni bajas que guardar."); return; }
@@ -307,7 +310,7 @@ export function viewCargaPpt(main) {
       await S.be.batch([...ops, { op: "update", path: "periodos/" + p.id, fields }]);
       main.onchange = null; main.oninput = null; main.onclick = null;
       main.innerHTML = `<div class="pagehead"><h1>PPT de comprobación</h1></div>${steps(STEPS, 2)}
-      <div class="stack"><div class="msg ok">Listo: ${esc(perLabel(p))}. Se marcaron fotos en ${n} soportes${keep ? ` y ${keep} conservaron lo que ya estaba marcado` : ""}; ${nEst === 1 ? "quedó" : "quedaron"} con "En PPT: Sí".${agregar.length ? ` ${agregar.length === 1 ? "Se agregó 1 soporte" : `Se agregaron ${agregar.length} soportes`} al periodo` + (altas.length ? `; ${altas.length === 1 ? "1 se dio" : altas.length + " se dieron"} de alta en el inventario (${altas.map(esc).join(", ")})` : "") + "." : ""}${bajas.length ? ` ${bajas.length === 1 ? "Se dio de baja 1 ubicación" : `Se dieron de baja ${bajas.length} ubicaciones`} del plan.` : ""}</div>
+      <div class="stack"><div class="msg ok">Listo: ${esc(perLabel(p))}. Se marcaron fotos en ${n} soportes${keep ? ` y ${keep} conservaron lo que ya estaba marcado` : ""}; ${nEst === 1 ? "quedó" : "quedaron"} con "En PPT: Sí" y "En Drive: Sí". ${nOk === 1 ? "1 soporte quedó" : nOk + " soportes quedaron"} como Comprobado ✔${nObs ? ` (${nObs} con observaciones conservan ese estatus)` : ""}.${agregar.length ? ` ${agregar.length === 1 ? "Se agregó 1 soporte" : `Se agregaron ${agregar.length} soportes`} al periodo` + (altas.length ? `; ${altas.length === 1 ? "1 se dio" : altas.length + " se dieron"} de alta en el inventario (${altas.map(esc).join(", ")})` : "") + "." : ""}${bajas.length ? ` ${bajas.length === 1 ? "Se dio de baja 1 ubicación" : `Se dieron de baja ${bajas.length} ubicaciones`} del plan.` : ""}</div>
       <div class="row2"><a class="btn primary" href="#control" id="pGo">Ver en Control</a><button class="btn" type="button" id="pOtra">Cargar otra PPT</button></div></div>`;
       $("#pGo").onclick = () => { S.F.camp = p.campana; S.F.per = p.periodo; S.F.st = ""; S.F.q = ""; try { localStorage.setItem("bym-filtros", JSON.stringify(S.F)); } catch (e) {} };
       $("#pOtra").onclick = () => { rows = []; step1(); };

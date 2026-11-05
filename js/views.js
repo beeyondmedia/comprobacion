@@ -178,7 +178,13 @@ function openDrawer(cid) {
     writeEstado(r, s === "Comprobado" ? { estatus: s, verificadoPor: S.auth.uid, fechaVerif: nowIso() } : { estatus: s }, "Estatus: " + s); };
   $("#dFotos").onchange = (e) => { const i = e.target.dataset.i; if (i !== undefined) toggleFoto(r, +i); };
   $("#dDrive").onchange = (e) => writeEstado(r, { drive: e.target.checked }, "En Drive: " + (e.target.checked ? "Sí" : "No"));
-  $("#dPpt").onchange = (e) => writeEstado(r, { ppt: e.target.checked }, "En PPT: " + (e.target.checked ? "Sí" : "No"));
+  // si está en la PPT también está en Drive y queda comprobado (salvo que tenga observaciones)
+  $("#dPpt").onchange = (e) => {
+    if (!e.target.checked) return writeEstado(r, { ppt: false }, "En PPT: No");
+    const obs = r.st.estatus === "Con observaciones";
+    writeEstado(r, { ppt: true, drive: true, ...(obs || r.st.estatus === "Comprobado" ? {} : { estatus: "Comprobado", verificadoPor: S.auth.uid, fechaVerif: nowIso() }) },
+      obs ? "En PPT y Drive: Sí (sigue con observaciones)" : "En PPT y Drive: Sí · Comprobado");
+  };
   $("#dSave").onclick = () => writeEstado(r, { link: $("#dLink").value.trim(), comentarios: $("#dCom").value.trim() }, "Guardado");
   $("#dOk").onclick = () => { if (stOf(r) !== "Comprobado") writeEstado(r, { estatus: "Comprobado", drive: true, ppt: true, verificadoPor: S.auth.uid, fechaVerif: nowIso() }, "Marcado como comprobado"); };
 }

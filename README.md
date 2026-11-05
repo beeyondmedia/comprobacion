@@ -68,7 +68,7 @@ Los archivos de la carga inicial **no van en el repositorio** (es público). Sú
 - **Ubicaciones de la PPT que no están en el plan:** si una diapositiva no coincide con el periodo pero sí, sin dudas, con un soporte del inventario, se propone "Fuera del plan: se agregará"; al guardar se agrega al periodo y cuenta en Avance. Puedes cambiarlo a "No aplicar".
 - **Ubicaciones del plan que no salen en la PPT:** aparecen en una lista para decidir cada una: **Dejar pendiente** (por defecto) o **Dar de baja del plan** con motivo (se pide confirmar al guardar). Las bajas salen de Control y Avance y quedan registradas en Campañas › Editar soportes, donde se pueden reactivar.
 - Si una diapositiva trae más de 5 fotos, se marcan 5 y te avisa. Si el soporte ya tenía fotos marcadas distintas, eliges entre usar la PPT o conservar lo marcado.
-- Al guardar se marcan Foto 1…N y "En PPT: Sí". El ✔ y el estatus no cambian.
+- Al guardar se marcan Foto 1…N, "En PPT: Sí" y "En Drive: Sí" (si está en la PPT también está en Drive), y el soporte queda **Comprobado ✔**. Los que están "Con observaciones" conservan ese estatus. Lo mismo pasa en Control al marcar "Cargadas en PPT".
 
 **Duplicar campaña** (Aprobador y Administrador, en Campañas): crea una campaña nueva con los mismos periodos y soportes activos (sin los dados de baja). Eliges nombre, cliente, versión, qué periodos copiar y sus fechas. Fotos, checks y arte empiezan en cero; después se ajusta cada periodo con "Editar soportes".
 
