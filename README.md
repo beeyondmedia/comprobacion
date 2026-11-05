@@ -13,7 +13,7 @@ App web interna para controlar la comprobación fotográfica de los soportes de 
 |---|---|
 | Consulta | Ver control, avance, campañas e inventario; exportar a Excel |
 | Verificador | Lo anterior + marcar comprobaciones (fotos, Drive, PPT, estatus, ✔), agregar el arte de referencia de cada periodo (links de Drive) y subir Excels de campañas o inventario para aprobación |
-| Aprobador | Lo anterior + aprobar o rechazar cargas **de otras personas**, archivar campañas |
+| Aprobador | Lo anterior + aprobar o rechazar cargas **de otras personas**, editar, duplicar y archivar campañas |
 | Administrador | Todo + dar de alta usuarios, cambiar roles y desactivar usuarios. Puede aprobar sus propias cargas |
 
 ## Instalación (una sola vez)
@@ -66,6 +66,10 @@ Los archivos de la carga inicial **no van en el repositorio** (es público). Sú
 - Si una diapositiva trae más de 5 fotos, se marcan 5 y te avisa. Si el soporte ya tenía fotos marcadas distintas, eliges entre usar la PPT o conservar lo marcado.
 - Al guardar se marcan Foto 1…N y "En PPT: Sí". El ✔ y el estatus no cambian.
 
+**Duplicar campaña** (Aprobador y Administrador, en Campañas): crea una campaña nueva con los mismos periodos y soportes activos (sin los dados de baja). Eliges nombre, cliente, versión, qué periodos copiar y sus fechas. Fotos, checks y arte empiezan en cero; después se ajusta cada periodo con "Editar soportes".
+
+**Versión:** campo libre de cada campaña (por ejemplo "V2 · 10 nov"), se escribe en Editar o al duplicar. Se ve junto al nombre y sale en el Excel exportado.
+
 Nada de las cargas de Excel se aplica hasta que un aprobador (distinto de quien subió el archivo) o un administrador lo aprueba. Todas las cargas quedan en **Historial**.
 
 ## Costos
@@ -91,7 +95,7 @@ firestore.rules       reglas de seguridad (pegar en la consola de Firebase)
 ## Modelo de datos (Firestore)
 - `users/{uid}`: nombre, email, rol, activo.
 - `catalogo/{CIUDAD}`: `sitios.{ID}` → tipo de espacio, venue type, ubicación, detalle, ciudad, network, owner, ID proveedor, medidas, lat, long, nombres originales, activo.
-- `campanas/{C01…}`: nombre, cliente, activo.
+- `campanas/{C01…}`: nombre, cliente, versión, activo, duplicadaDe.
 - `periodos/{C01-P|D|U}`: campaña, periodo, fechas, `sitios[]`, `refs[]` (hasta 2 links de Drive con el arte de referencia), `bajas.{ID}` (motivo, fecha, sustituido por), `estado.{ID}` → estatus, fotos, drive, ppt, link, comentarios, verificó, fecha.
 - `cargas/{id}`: archivo subido, decisiones de revisión, estatus (pendiente, aprobada, rechazada, cancelada), quién subió y quién revisó.
 - `config/setup`: marca que ya existe el primer administrador.

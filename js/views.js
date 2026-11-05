@@ -1,6 +1,6 @@
 // Vistas de operación: Control, Avance, Campañas, Inventario y Usuarios.
 import { S, $, $$, esc, opt, pct, fecha, nowIso, nombreDe, pillCls, toast, can, saveF, ESTATUS, ROLES,
-  allRows, stOf, filtered, counts, stackBar, summaryHTML, periodosActivos, site, matchQuery, cleanSite } from "./core.js";
+  allRows, stOf, filtered, counts, stackBar, summaryHTML, periodosActivos, site, matchQuery, fold, cleanSite } from "./core.js";
 import { downloadXlsx } from "./excel.js";
 import { DOMINIO } from "./config.js";
 
@@ -33,7 +33,7 @@ export function bindFilters(root, rerender) {
 }
 function exportControl(noStatus = false) {
   const rows = filtered(allRows(), { noStatus }).map((r) => ({
-    "ID COMPROBACIÓN": r.cid, "CAMPAÑA": r.p.campana, "PERIODO": r.p.periodo, "FECHAS": r.p.fechas || "", "ID SOPORTE": r.s.id,
+    "ID COMPROBACIÓN": r.cid, "CAMPAÑA": r.p.campana, "VERSIÓN": S.campanas.find((c) => c.id === r.p.campanaId)?.version || "", "PERIODO": r.p.periodo, "FECHAS": r.p.fechas || "", "ID SOPORTE": r.s.id,
     "TIPO DE ESPACIO": r.s.esp, "VENUE TYPE": r.s.sop, "UBICACIÓN": r.s.ub, "DETALLE / POSICIÓN": r.s.det, "CIUDAD": r.s.ciudad,
     "MEDIA OWNER": r.s.owner, "FOTOS (0-5)": fotosSel(r.st).filter(Boolean).length, "FOTOS MARCADAS": fotosSel(r.st).map((on, i) => (on ? i + 1 : null)).filter(Boolean).join(", "), "EN DRIVE": r.st.drive ? "Sí" : "No", "EN PPT": r.st.ppt ? "Sí" : "No",
     "ESTATUS": stOf(r), "VERIFICÓ": nombreDe(r.st.verificadoPor), "FECHA VERIFICACIÓN": fecha(r.st.fechaVerif),
@@ -243,8 +243,8 @@ export function viewCampanas(main) {
     ${camps.length ? "" : `<div class="panel empty">Aún no hay campañas. ${can("verificador") ? `<a href="#carga-campana">Sube la primera</a>.` : ""}</div>`}
     <div class="stack">${camps.map((c) => {
       const pers = S.periodos.filter((p) => p.campanaId === c.id).sort((a, b) => (a.orden || "").localeCompare(b.orden || ""));
-      return `<div class="panel"><div class="row" style="justify-content:space-between;align-items:center"><div><h3 style="margin:0">${esc(c.nombre)} ${c.activo === false ? `<span class="pill p-cancelada">Archivada</span>` : ""}</h3><span class="note">${esc(c.cliente || "")} · <span class="mono">${esc(c.id)}</span> · creada ${fecha(c.creado)}</span></div>
-        ${ap ? `<div class="row"><button class="btn small" type="button" data-camp-edit="${esc(c.id)}">Editar nombre</button><button class="btn small" type="button" data-camp-act="${esc(c.id)}">${c.activo === false ? "Reactivar" : "Archivar"}</button></div>` : ""}</div>
+      return `<div class="panel"><div class="row" style="justify-content:space-between;align-items:center"><div><h3 style="margin:0">${esc(c.nombre)} ${c.version ? `<span class="pill p-Pendiente" title="Versión">${esc(c.version)}</span>` : ""} ${c.activo === false ? `<span class="pill p-cancelada">Archivada</span>` : ""}</h3><span class="note">${esc(c.cliente || "")} · <span class="mono">${esc(c.id)}</span> · creada ${fecha(c.creado)}</span></div>
+        ${ap ? `<div class="row"><button class="btn small" type="button" data-camp-edit="${esc(c.id)}">Editar</button><button class="btn small" type="button" data-camp-dup="${esc(c.id)}">Duplicar</button><button class="btn small" type="button" data-camp-act="${esc(c.id)}">${c.activo === false ? "Reactivar" : "Archivar"}</button></div>` : ""}</div>
         <div class="tablebox" style="margin-top:10px"><table><thead><tr><th>Periodo</th><th>Fechas</th><th>Soportes</th><th>Comprobados</th><th style="min-width:160px">Avance</th><th>Arte</th>${ap ? "<th></th>" : ""}</tr></thead><tbody>
         ${pers.map((p) => { const k = counts(all.filter((r) => r.p.id === p.id)); return `<tr><td><b>${esc(p.periodo)}</b> <span class="mono">${esc(p.id)}</span> ${p.activo === false ? `<span class="pill p-cancelada">Archivado</span>` : ""}</td><td>${esc(p.fechas || "")}</td><td class="num">${k.total}</td><td class="num">${k.Comprobado}</td><td>${stackBar(k)}<span class="note">${pct(k.pct)}</span></td><td><div class="row" style="flex-wrap:nowrap">${(p.refs || []).length ? `<button class="btn small" type="button" data-ref-view="${esc(p.id)}">Ver (${(p.refs || []).length})</button>` : `<span class="note">Sin arte</span>`}${can("verificador") ? `<button class="btn small" type="button" data-ref-edit="${esc(p.id)}">${(p.refs || []).length ? "Cambiar" : "Agregar"}</button>` : ""}</div></td>${ap ? `<td><div class="row" style="flex-wrap:nowrap"><button class="btn small primary" type="button" data-per-edit="${esc(p.id)}">Editar soportes</button><button class="btn small" type="button" data-per-act="${esc(p.id)}">${p.activo === false ? "Reactivar" : "Archivar"}</button></div></td>` : ""}</tr>`; }).join("")}
         </tbody></table></div></div>`;
@@ -252,6 +252,7 @@ export function viewCampanas(main) {
     main.onclick = async (e) => {
       const rf = e.target.closest("[data-ref-edit],[data-ref-view]");
       if (rf) { if (rf.dataset.refEdit) openRefsEditor(rf.dataset.refEdit); else openRefsViewer(rf.dataset.refView); return; }
+      const du = e.target.closest("[data-camp-dup]"); if (du) { openCampaignDuplicate(du.dataset.campDup); return; }
       const ed = e.target.closest("[data-per-edit],[data-camp-edit]");
       if (ed) { if (ed.dataset.perEdit) openPeriodEditor(ed.dataset.perEdit); else openCampaignEditor(ed.dataset.campEdit); return; }
       const b = e.target.closest("[data-camp-act],[data-per-act]"); if (!b) return;
@@ -330,17 +331,55 @@ export function openCampaignEditor(cid) {
   dr.innerHTML = `<header><div style="flex:1"><div class="mono">${esc(cid)}</div><h2>Editar campaña</h2></div><button class="btn" type="button" id="ceClose">Cerrar</button></header>
   <div class="body"><label class="field"><span>Nombre</span><input type="text" id="ce-n" value="${esc(c.nombre)}"></label>
   <label class="field"><span>Cliente</span><input type="text" id="ce-c" value="${esc(c.cliente || "")}"></label>
+  <label class="field"><span>Versión</span><input type="text" id="ce-v" value="${esc(c.version || "")}" placeholder="Ej. V2 · 10 nov"></label>
   ${S.periodos.filter((p) => p.campanaId === cid).map((p) => `<label class="field"><span>Fechas · ${esc(p.periodo)}</span><input type="text" data-fp="${esc(p.id)}" value="${esc(p.fechas || "")}"></label>`).join("")}</div>
   <footer><button class="btn primary" type="button" id="ceSave">Guardar</button></footer>`;
   dr.hidden = false; $("#scrim").hidden = false;
   $("#ceClose").onclick = closeDrawer;
   $("#ceSave").onclick = async () => {
     const nombre = $("#ce-n").value.trim(); if (!nombre) { toast("El nombre no puede quedar vacío"); return; }
-    const ops = [{ op: "update", path: "campanas/" + cid, fields: [[["nombre"], nombre], [["cliente"], $("#ce-c").value.trim()]] }];
+    if (S.campanas.some((x) => x.id !== cid && fold(x.nombre) === fold(nombre))) { toast("Ya existe otra campaña con ese nombre"); return; }
+    const ops = [{ op: "update", path: "campanas/" + cid, fields: [[["nombre"], nombre], [["cliente"], $("#ce-c").value.trim()], [["version"], $("#ce-v").value.trim()]] }];
     for (const p of S.periodos.filter((x) => x.campanaId === cid)) {
       ops.push({ op: "update", path: "periodos/" + p.id, fields: [[["campana"], nombre], [["fechas"], $(`[data-fp="${p.id}"]`).value.trim()]] });
     }
     try { await S.be.batch(ops); toast("Campaña actualizada"); closeDrawer(); } catch (e) { toast("No se pudo guardar"); }
+  };
+}
+
+// Duplicar: nueva campaña con los mismos periodos y soportes activos (sin bajas). Fotos, checks y arte empiezan en cero.
+export function openCampaignDuplicate(cid) {
+  const c = S.campanas.find((x) => x.id === cid); if (!c) return;
+  const pers = S.periodos.filter((p) => p.campanaId === cid).sort((a, b) => (a.orden || "").localeCompare(b.orden || ""));
+  const activos = (p) => (p.sitios || []).filter((sid) => !(p.bajas || {})[sid]);
+  const dr = $("#drawer");
+  dr.innerHTML = `<header><div style="flex:1"><div class="mono">Copia de ${esc(cid)}</div><h2>Duplicar campaña</h2></div><button class="btn" type="button" id="cdClose">Cerrar</button></header>
+  <div class="body"><div class="note">Se crea una campaña nueva con los mismos periodos y soportes (sin los dados de baja). Las fotos, los checks y el arte de referencia empiezan en cero. Después puedes editar cada periodo.</div>
+  <label class="field"><span>Nombre de la campaña nueva</span><input type="text" id="cd-n" value="${esc(c.nombre + " (copia)")}"></label>
+  <label class="field"><span>Cliente</span><input type="text" id="cd-c" value="${esc(c.cliente || "")}"></label>
+  <label class="field"><span>Versión</span><input type="text" id="cd-v" value="" placeholder="Ej. V2 · 10 nov"></label>
+  ${pers.map((p) => `<div class="panel stack" style="padding:10px"><label class="toggle"><input type="checkbox" data-cdp="${esc(p.id)}" checked> <b>${esc(p.periodo)}</b> · ${activos(p).length} soportes</label>
+    <label class="field"><span>Fechas · ${esc(p.periodo)}</span><input type="text" data-cdf="${esc(p.id)}" value="${esc(p.fechas || "")}"></label></div>`).join("")}</div>
+  <footer><button class="btn primary" type="button" id="cdSave">Crear copia</button></footer>`;
+  dr.hidden = false; $("#scrim").hidden = false;
+  $("#cdClose").onclick = closeDrawer;
+  $("#cdSave").onclick = async () => {
+    const nombre = $("#cd-n").value.trim();
+    if (!nombre) { toast("Escribe el nombre de la campaña nueva"); return; }
+    if (S.campanas.some((x) => fold(x.nombre) === fold(nombre))) { toast("Ya existe una campaña con ese nombre; usa otro"); return; }
+    const elegidos = pers.filter((p) => $(`[data-cdp="${p.id}"]`).checked);
+    if (!elegidos.length) { toast("Elige al menos un periodo"); return; }
+    const max = Math.max(0, ...S.campanas.map((x) => parseInt(String(x.id).replace(/\D/g, ""), 10) || 0));
+    const nid = "C" + String(max + 1).padStart(2, "0"), now = nowIso();
+    const ops = [{ op: "set", path: "campanas/" + nid, data: { nombre, cliente: $("#cd-c").value.trim(), version: $("#cd-v").value.trim(), activo: true, creado: now, creadoPor: S.auth.uid, duplicadaDe: cid } }];
+    for (const p of elegidos) {
+      const code = p.id.slice(cid.length + 1);
+      ops.push({ op: "set", path: `periodos/${nid}-${code}`, data: { campanaId: nid, campana: nombre, periodo: p.periodo, fechas: $(`[data-cdf="${p.id}"]`).value.trim(),
+        sitios: activos(p), estado: {}, refs: [], bajas: {}, activo: true, orden: (p.orden || "").replace(cid, nid) || `${nid}-9`, creado: now, duplicadoDe: p.id } });
+    }
+    $("#cdSave").disabled = true;
+    try { await S.be.batch(ops); toast(`Campaña ${nid} creada`); closeDrawer(); }
+    catch (e) { console.error(e); $("#cdSave").disabled = false; toast("No se pudo duplicar. Revisa tus permisos."); }
   };
 }
 
