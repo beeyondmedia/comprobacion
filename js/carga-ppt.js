@@ -1,7 +1,7 @@
 // Carga de la PPT de comprobación: cuenta las fotos de cada diapositiva y las marca
 // en el periodo elegido (Foto 1…N y "En PPT: Sí"). El ✔ y el estatus no cambian.
 import { S, $, $$, esc, opt, nowIso, toast, can, periodosActivos, matchQuery, nextSiteIds, cleanSite, fold } from "./core.js";
-import { readPptx, matchSlides, textoUbicacion } from "./ppt.js";
+import { readPptx, matchSlides, textoUbicacion, mismaUbicacion } from "./ppt.js";
 import { fotosSel } from "./views.js";
 
 const JSZIP_URL = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
@@ -29,7 +29,16 @@ const perLabel = (p) => `${p.campana} · ${p.periodo}${p.fechas ? " · " + p.fec
 export function viewCargaPpt(main) {
   if (!can("verificador")) { main.innerHTML = `<div class="pagehead"><h1>PPT de comprobación</h1></div><div class="msg warn">Tu rol solo permite consultar.</div>`; return; }
   let pid = S.F.camp ? (periodosActivos().find((p) => p.campana === S.F.camp && (!S.F.per || p.periodo === S.F.per))?.id || "") : "";
-  let rows = [], fileName = "", busy = false, camp = "";
+  let rows = [], fileName = "", busy = false, camp = "", uidN = 0;
+  // Otra cara de la misma diapositiva: una fila más, ligada a la de la diapositiva. Las fotos se reparten.
+  const nuevaCara = (r, sid = "", auto = false) => {
+    const tot = Math.min(r.fotos, MAX * 2), caras = rows.filter((x) => x.cara === r.uid).length + 2;
+    const each = Math.floor(tot / caras), extra = tot - each * caras;
+    r.n = Math.min(MAX, each + extra);
+    rows.filter((x) => x.cara === r.uid).forEach((x) => (x.n = Math.min(MAX, each)));
+    return { uid: ++uidN, cara: r.uid, n_slide: r.n_slide, texto: r.texto, fotos: 0, id: sid, sid, seguro: false, auto,
+      opciones: r.opciones.filter((x) => x !== r.sid), scores: [], n: Math.min(MAX, each), dec: "ppt" };
+  };
   loadJsZip().catch(() => {});
 
   const step1 = () => {
@@ -71,7 +80,17 @@ export function viewCargaPpt(main) {
       const slides = (await readPptx(f)).filter((s) => s.texto || s.fotos);
       const per = S.periodos.find((p) => p.id === pid);
       const sitios = (per.sitios || []).filter((id) => !(per.bajas || {})[id]).map((id) => [id, S.catalogo.get(id) || { ub: id }]);
-      rows = matchSlides(slides, sitios).map((r) => ({ ...r, n_slide: r.n, sid: r.id, n: Math.min(r.fotos, MAX), dec: "ppt" }));
+      rows = matchSlides(slides, sitios).map((r) => ({ ...r, uid: ++uidN, n_slide: r.n, sid: r.id, n: Math.min(r.fotos, MAX), dec: "ppt" }));
+      // propone la segunda cara cuando el texto también describe otra cara del mismo sitio (MASARYK I / MASARYK II)
+      const usados = new Set(rows.map((r) => r.sid).filter(Boolean));
+      for (const r of [...rows]) {
+        if (!r.sid) continue;
+        const k = r.opciones.findIndex((id, j) => j > 0 && id !== r.sid && !usados.has(id) && r.scores[j] >= 0.85 && r.scores[j] >= r.score - 0.3
+          && mismaUbicacion(S.catalogo.get(id), S.catalogo.get(r.sid)));
+        if (k < 0) continue;
+        const c = nuevaCara(r, r.opciones[k], true); usados.add(c.sid);
+        rows.splice(rows.indexOf(r) + 1, 0, c);
+      }
       fileName = f.name; busy = false; step2();
     } catch (e) {
       console.error(e); busy = false;
@@ -86,22 +105,26 @@ export function viewCargaPpt(main) {
   function rowHTML(r, i) {
     const p = per(), ids = (p.sitios || []).filter((id) => !(p.bajas || {})[id]);
     const resto = ids.filter((id) => !r.opciones.includes(id)).sort((a, b) => label(a).localeCompare(label(b)));
-    const estado = !r.sid ? `<span class="pill p-error">Sin coincidencia</span>` : r.sid !== r.id ? `<span class="pill p-actualizar">Elegido a mano</span>` : r.seguro ? `<span class="pill p-Comprobado">Coincide</span>` : `<span class="pill p-dudoso">Revisa</span>`;
+    const caras = rows.filter((x) => x.cara === r.uid).length;
+    const caraPill = !r.cara && caras && r.sid ? `<span class="pill p-Comprobado">${caras + 1} caras</span>` : r.cara ? `<span class="pill p-Pendiente">${r.auto ? "Otra cara (propuesta)" : "Otra cara"}</span> ` : "";
+    const estado = caraPill + ((r.cara || caras) && r.sid ? "" : !r.sid ? `<span class="pill p-error">${r.cara ? "Elige la otra cara" : "Sin coincidencia"}</span>` : r.sid !== r.id ? `<span class="pill p-actualizar">Elegido a mano</span>` : r.seguro ? `<span class="pill p-Comprobado">Coincide</span>` : `<span class="pill p-dudoso">Revisa</span>`);
     const c = r.sid ? cur(r.sid) : null, cn = r.sid ? curN(r.sid) : 0;
     const dif = r.sid && cn > 0 && cn !== r.n;
-    return `<tr data-i="${i}">
-      <td class="num">${r.n_slide}</td>
-      <td><div>${esc(textoUbicacion(r.texto) || "(sin texto)")}</div><div style="margin-top:4px">${estado}</div></td>
+    return `<tr data-i="${i}"${r.cara ? ' class="pcara"' : ""}>
+      <td class="num">${r.cara ? "↳" : r.n_slide}</td>
+      <td>${r.cara ? `<div class="note">Misma diapositiva ${r.n_slide}</div>` : `<div>${esc(textoUbicacion(r.texto) || "(sin texto)")}</div>`}<div style="margin-top:4px">${estado}</div>
+        ${r.cara ? `<button class="btn small" type="button" data-quitar-cara="${i}" style="margin-top:4px">Quitar esta cara</button>`
+          : r.sid ? `<button class="btn small" type="button" data-cara="${i}" style="margin-top:4px">+ ${caras ? "Otra cara más" : "Tiene otra cara"}</button>` : ""}</td>
       <td><select class="pSite" data-i="${i}" aria-label="Soporte de la diapositiva ${r.n_slide}"><option value="">— No aplicar —</option>
         ${r.opciones.length ? `<optgroup label="Más parecidos">${r.opciones.map((id) => opt(id, label(id), id === r.sid)).join("")}</optgroup>` : ""}
         <optgroup label="Todos los soportes del periodo">${resto.map((id) => opt(id, label(id), id === r.sid)).join("")}</optgroup>
         ${r.extra ? `<optgroup label="Del inventario (se agrega al periodo)">${opt(r.extra, label(r.extra), r.sid === r.extra)}</optgroup>` : ""}
-        ${r.nuevo ? `<optgroup label="Alta nueva (se agrega al inventario y al periodo)">${opt("NUEVO:" + i, "Nuevo: " + r.nuevo.ub + " · " + r.nuevo.sop + " · " + r.nuevo.owner, r.sid === "NUEVO:" + i)}</optgroup>` : ""}
+        ${r.nuevo ? `<optgroup label="Alta nueva (se agrega al inventario y al periodo)">${opt("NUEVO:" + r.uid, "Nuevo: " + r.nuevo.ub + " · " + r.nuevo.sop + " · " + r.nuevo.owner, r.sid === "NUEVO:" + r.uid)}</optgroup>` : ""}
         <option value="__buscar">🔍 Buscar en todo el inventario…</option></select>
         ${r.sid && !ids.includes(r.sid) ? `<div class="note" style="margin-top:4px">${r.sid.startsWith("NUEVO:") ? "Se dará de alta en el inventario y se agregará al periodo" : "Se agregará a este periodo"}</div>` : ""}
         ${!r.buscar && !(r.sid && r.sid === r.id && r.seguro) ? `<button class="btn small" type="button" data-buscar="${i}" style="margin-top:4px">Buscar en todo el inventario</button>` : ""}</td>
       <td class="num"><input type="number" class="pN" data-i="${i}" min="0" max="${MAX}" value="${r.n}" style="width:56px" aria-label="Fotos a marcar">
-        ${r.fotos > MAX ? `<div style="margin-top:4px"><span class="pill p-dudoso">trae ${r.fotos}, se marcan ${MAX}</span></div>` : r.fotos === 0 ? `<div class="note">sin fotos</div>` : ""}</td>
+        ${r.cara ? "" : caras ? `<div class="note">la diapositiva trae ${r.fotos}</div>` : r.fotos > MAX ? `<div style="margin-top:4px"><span class="pill p-dudoso">trae ${r.fotos}, se marcan ${MAX}</span></div>` : r.fotos === 0 ? `<div class="note">sin fotos</div>` : ""}</td>
       <td>${r.sid ? `${cn} foto${cn === 1 ? "" : "s"} · PPT ${c.ppt ? "Sí" : "No"}` : "—"}</td>
       <td>${dif ? `<select class="pDec" data-i="${i}" aria-label="Qué hacer"><option value="ppt"${r.dec === "ppt" ? " selected" : ""}>Usar la PPT (${r.n})</option><option value="keep"${r.dec === "keep" ? " selected" : ""}>Conservar lo marcado (${cn})</option></select>`
         : r.sid && r.n > 0 ? (cn === r.n ? `<span class="note">Igual (${r.n})</span>` : `Marcar ${r.n}`) : `<span class="note">No se aplica</span>`}</td></tr>
@@ -146,16 +169,17 @@ export function viewCargaPpt(main) {
   const step2 = () => draw2();
   function draw2() {
     const p = per();
-    const k = { total: rows.length, ok: rows.filter((r) => r.sid && r.seguro && r.sid === r.id).length, sin: rows.filter((r) => !r.sid).length,
-      mas: rows.filter((r) => r.fotos > MAX).length, dif: rows.filter((r) => r.sid && curN(r.sid) > 0 && curN(r.sid) !== r.n).length };
-    k.mano = rows.filter((r) => r.sid && r.sid !== r.id).length; k.rev = k.total - k.ok - k.sin - k.mano;
+    const sl = rows.filter((r) => !r.cara);
+    const k = { total: sl.length, ok: sl.filter((r) => r.sid && r.sid === r.id && (r.seguro || rows.some((x) => x.cara === r.uid))).length, sin: sl.filter((r) => !r.sid).length,
+      caras: rows.filter((r) => r.cara).length, mas: sl.filter((r) => r.fotos > MAX && !rows.some((x) => x.cara === r.uid)).length, dif: rows.filter((r) => r.sid && curN(r.sid) > 0 && curN(r.sid) !== r.n).length };
+    k.mano = sl.filter((r) => r.sid && r.sid !== r.id).length; k.rev = k.total - k.ok - k.sin - k.mano;
     const usados = new Set(rows.map((r) => r.sid).filter(Boolean));
     const faltan = (p.sitios || []).filter((id) => !(p.bajas || {})[id] && !usados.has(id));
     const dup = [...usados].filter((id) => rows.filter((r) => r.sid === id).length > 1);
     main.innerHTML = `<div class="pagehead"><h1>PPT de comprobación</h1></div>${steps(STEPS, 1)}
     <div class="stack"><div class="panel stack"><div class="note">Archivo: <b>${esc(fileName)}</b> · Periodo: <b>${esc(perLabel(p))}</b></div>
-      <div class="counts"><span class="pill p-Pendiente">${k.total} diapositivas</span><span class="pill p-Comprobado">${k.ok} coinciden</span>${k.mano ? `<span class="pill p-actualizar">${k.mano} elegidos a mano</span>` : ""}${k.rev ? `<span class="pill p-dudoso">${k.rev} por revisar</span>` : ""}${k.sin ? `<span class="pill p-error">${k.sin} sin coincidencia</span>` : ""}${k.mas ? `<span class="pill p-dudoso">${k.mas} con más de ${MAX} fotos</span>` : ""}${k.dif ? `<span class="pill p-dudoso">${k.dif} distintas a lo ya marcado</span>` : ""}</div>
-      ${k.mas ? `<div class="msg warn">${rows.filter((r) => r.fotos > MAX).map((r) => `Diapositiva ${r.n_slide} trae ${r.fotos} fotos`).join(" · ")}. Se marcan ${MAX}, el máximo de la app.</div>` : ""}
+      <div class="counts"><span class="pill p-Pendiente">${k.total} diapositivas</span><span class="pill p-Comprobado">${k.ok} coinciden</span>${k.mano ? `<span class="pill p-actualizar">${k.mano} elegidos a mano</span>` : ""}${k.caras ? `<span class="pill p-Pendiente">${k.caras} cara${k.caras === 1 ? "" : "s"} extra</span>` : ""}${k.rev ? `<span class="pill p-dudoso">${k.rev} por revisar</span>` : ""}${k.sin ? `<span class="pill p-error">${k.sin} sin coincidencia</span>` : ""}${k.mas ? `<span class="pill p-dudoso">${k.mas} con más de ${MAX} fotos</span>` : ""}${k.dif ? `<span class="pill p-dudoso">${k.dif} distintas a lo ya marcado</span>` : ""}</div>
+      ${k.mas ? `<div class="msg warn">${sl.filter((r) => r.fotos > MAX && !rows.some((x) => x.cara === r.uid)).map((r) => `Diapositiva ${r.n_slide} trae ${r.fotos} fotos`).join(" · ")}. Se marcan ${MAX}, el máximo de la app.</div>` : ""}
       ${dup.length ? `<div class="msg err">Hay soportes elegidos en más de una diapositiva: ${dup.map((id) => esc(label(id))).join(" · ")}. Corrige antes de guardar.</div>` : ""}</div>
     <div class="tablebox"><table><thead><tr><th>Diap.</th><th>Texto en la PPT</th><th>Soporte del periodo</th><th>Fotos PPT</th><th>Hoy en la app</th><th>Qué hacer</th></tr></thead>
       <tbody id="pRows">${rows.map(rowHTML).join("")}</tbody></table></div>
@@ -180,16 +204,26 @@ export function viewCargaPpt(main) {
       const b = e.target.closest("button"); if (!b) return;
       const d = b.dataset;
       if (d.buscar != null) abrirBuscar(+d.buscar);
+      else if (d.cara != null) {
+        const i = +d.cara, r = rows[i], c = nuevaCara(r);
+        const pos = i + 1 + rows.filter((x) => x.cara === r.uid).length; rows.splice(pos, 0, c);
+        c.buscar = !c.opciones.length; if (c.buscar) c.q = partirTexto(r.texto).ub; draw2();
+      }
+      else if (d.quitarCara != null) {
+        const i = +d.quitarCara, c = rows[i], r = rows.find((x) => x.uid === c.cara); rows.splice(i, 1);
+        const resto = rows.filter((x) => x.cara === r.uid);
+        if (!resto.length) r.n = Math.min(MAX, r.fotos); draw2();
+      }
       else if (d.cerrar != null) { rows[+d.cerrar].buscar = false; draw2(); }
       else if (d.elegir != null) { const r = rows[+d.elegir], p = per(); r.sid = d.id; if (!(p.sitios || []).includes(d.id)) r.extra = d.id; r.buscar = false; r.dec = "ppt"; draw2(); }
       else if (d.alta != null) { rows[+d.alta].alta = true; draw2(); }
-      else if (d.altaNo != null) { const r = rows[+d.altaNo]; r.alta = false; if (r.sid === "NUEVO:" + d.altaNo) r.sid = ""; r.nuevo = null; draw2(); }
+      else if (d.altaNo != null) { const r = rows[+d.altaNo]; r.alta = false; if (r.sid === "NUEVO:" + r.uid) r.sid = ""; r.nuevo = null; draw2(); }
       else if (d.altaOk != null) {
         const i = +d.altaOk, r = rows[i], f = r.form;
         const up = (x) => String(x || "").trim().toUpperCase();
         if (!up(f.ub) || !up(f.sop) || !up(f.owner)) { toast("Llena ubicación, venue type y media owner"); return; }
         r.nuevo = { esp: f.esp, sop: up(f.sop), ub: up(f.ub), det: up(f.det), owner: up(f.owner), ciudad: f.ciudad };
-        r.sid = "NUEVO:" + i; r.buscar = false; r.alta = false; r.dec = "ppt"; draw2();
+        r.sid = "NUEVO:" + r.uid; r.buscar = false; r.alta = false; r.dec = "ppt"; draw2();
       }
     };
     const abrirBuscar = (i) => { const r = rows[i]; r.buscar = true; if (r.q == null) r.q = partirTexto(r.texto).ub; draw2(); const q = $(`.pQ[data-i="${i}"]`); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } };
@@ -218,7 +252,7 @@ export function viewCargaPpt(main) {
       if (!r.sid || r.n <= 0) continue;
       const c = cur(r.sid), cn = curN(r.sid);
       const usarPpt = !(cn > 0 && cn !== r.n && r.dec === "keep");
-      const next = { ...c, ppt: true, fotosPpt: r.fotos, fotosOrigen: fileName, actualizadoPor: S.auth.uid, actualizado: now };
+      const next = { ...c, ppt: true, fotosPpt: r.cara ? r.n : r.fotos, fotosOrigen: fileName, actualizadoPor: S.auth.uid, actualizado: now };
       if (usarPpt) { next.fotosSel = [1, 2, 3, 4, 5].map((x) => x <= r.n); next.fotos = r.n; n++; } else keep++;
       fields.push([["estado", r.sid], next]);
     }
@@ -233,7 +267,7 @@ export function viewCargaPpt(main) {
       <div class="row2"><a class="btn primary" href="#control" id="pGo">Ver en Control</a><button class="btn" type="button" id="pOtra">Cargar otra PPT</button></div></div>`;
       $("#pGo").onclick = () => { S.F.camp = p.campana; S.F.per = p.periodo; S.F.st = ""; S.F.q = ""; try { localStorage.setItem("bym-filtros", JSON.stringify(S.F)); } catch (e) {} };
       $("#pOtra").onclick = () => { rows = []; step1(); };
-    } catch (e) { console.error(e); for (const r of rows) if (r.nuevo && altas.includes(r.sid)) r.sid = "NUEVO:" + rows.indexOf(r); $("#pApply").disabled = false; toast("No se pudo guardar. Revisa tu conexión o tus permisos."); }
+    } catch (e) { console.error(e); for (const r of rows) if (r.nuevo && altas.includes(r.sid)) r.sid = "NUEVO:" + r.uid; $("#pApply").disabled = false; toast("No se pudo guardar. Revisa tu conexión o tus permisos."); }
   }
 
   step1();

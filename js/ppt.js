@@ -119,6 +119,18 @@ export function matchSlides(slides, sitios /* [[id, s]] */) {
     const m = bySlide.get(i);
     const otro = mine.find((p) => p.id !== m?.id);
     const seguro = !!m && m.sc >= 0.85 && (!otro || m.sc - otro.sc >= 0.12);
-    return { ...sl, id: m?.id || "", score: m?.sc || 0, seguro, opciones: mine.slice(0, 5).map((p) => p.id) };
+    return { ...sl, id: m?.id || "", score: m?.sc || 0, seguro, opciones: mine.slice(0, 5).map((p) => p.id), scores: mine.slice(0, 5).map((p) => p.sc) };
   });
+}
+
+// ¿Dos soportes son caras de la misma ubicación? (mismo nombre quitando I/II, NORTE-SUR, IZQ/DER…)
+const CARA = new Set(["I", "II", "III", "IV", "V", "NORTE", "SUR", "ORIENTE", "PONIENTE", "NS", "SN", "OP", "PO", "IZQ", "DER", "IZQUIERDA", "DERECHA",
+  "A", "B", "C", "1", "2", "3", "VISTA", "NATURAL", "CRUZADA", "FRONTAL", "CARA", "LADO", "SENTIDO"]);
+const base = (s) => new Set(fold(s).split(" ").filter((t) => t && !STOP.has(t) && !CARA.has(t)));
+export function mismaUbicacion(a, b) {
+  if (!a || !b) return false;
+  const A = base(a.ub + " " + (a.det || "")), B = base(b.ub + " " + (b.det || ""));
+  if (!A.size || !B.size) return false;
+  let i = 0; for (const t of A) if (B.has(t)) i++;
+  return i / (A.size + B.size - i) >= 0.6;
 }

@@ -64,6 +64,7 @@ Los archivos de la carga inicial **no van en el repositorio** (es público). Sú
 - Eliges la campaña y el periodo y subes el `.pptx`. Una diapositiva = una ubicación: el nombre se toma del cuadro de texto de la izquierda y se cuentan las fotos de la campaña (imágenes grandes); fondos, logos, íconos y mapas no cuentan.
 - Antes de guardar ves cada diapositiva con el soporte que encontró (Coincide / Revisa / Sin coincidencia) y puedes cambiarlo o ajustar el número de fotos.
 - Si el soporte no aparece en la lista, **Buscar en todo el inventario** permite elegir cualquier soporte; al guardar se agrega al periodo. Si tampoco existe en el inventario, ahí mismo se da de alta (ubicación, venue type, owner, ciudad y tipo de espacio) con el siguiente ID de su ciudad.
+- **Ubicaciones con dos caras** (por ejemplo MASARYK I / MASARYK II o MUNDO E NORTE-SUR / SUR-NORTE, que en el inventario son soportes separados): si el texto de la diapositiva describe las dos caras, la app propone la otra cara en una fila debajo ("Otra cara (propuesta)"). En cualquier diapositiva puedes usar **+ Tiene otra cara** y elegirla de la lista, buscarla en todo el inventario o darla de alta. Las fotos se reparten a la mitad y puedes cambiar cuántas lleva cada cara.
 - Si una diapositiva trae más de 5 fotos, se marcan 5 y te avisa. Si el soporte ya tenía fotos marcadas distintas, eliges entre usar la PPT o conservar lo marcado.
 - Al guardar se marcan Foto 1…N y "En PPT: Sí". El ✔ y el estatus no cambian.
 

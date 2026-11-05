@@ -200,3 +200,5 @@ td select{max-width:440px;width:100%}
 .daterange{display:flex;gap:4px;align-items:center;text-transform:none;letter-spacing:0;font-weight:400}
 .daterange input{width:140px}
 :root[data-theme="dark"] input[type=date]{color-scheme:dark}
+tr.pcara td{background:var(--idle-soft)}
+tr.pcara td:first-child{color:var(--muted);text-align:center}
