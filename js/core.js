@@ -31,10 +31,12 @@ export function toast(t) { const el = $("#toast"); el.textContent = t; el.hidden
 
 // ---------- datos derivados
 export function site(id) { return S.catalogo.get(id); }
+// Orden alfabético (sin importar acentos ni mayúsculas; "C2" antes que "C10")
+export const porNombre = (a, b) => String(a || "").localeCompare(String(b || ""), "es", { sensitivity: "base", numeric: true });
 export function periodosActivos() {
   const camp = new Map(S.campanas.map((c) => [c.id, c]));
   return S.periodos.filter((p) => p.activo !== false && (camp.get(p.campanaId)?.activo !== false))
-    .sort((a, b) => (a.orden || "").localeCompare(b.orden || "") || a.id.localeCompare(b.id));
+    .sort((a, b) => porNombre(a.campana, b.campana) || (a.orden || "").localeCompare(b.orden || "") || a.id.localeCompare(b.id));
 }
 export function allRows(periodos = periodosActivos()) {
   const out = [];

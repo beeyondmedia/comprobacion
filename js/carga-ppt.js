@@ -25,7 +25,7 @@ export function viewCargaPpt(main) {
 
   const step1 = () => {
     const pers = periodosActivos();
-    const camps = [...new Set(pers.map((p) => p.campana))].sort((a, b) => a.localeCompare(b, "es"));
+    const camps = [...new Set(pers.map((p) => p.campana))].sort((a, b) => a.localeCompare(b, "es", { sensitivity: "base", numeric: true }));
     camp = pers.find((p) => p.id === pid)?.campana || camp;
     main.innerHTML = `<div class="pagehead"><h1>PPT de comprobación</h1></div>${steps(STEPS, 0)}
     <div class="stack"><div class="panel stack">

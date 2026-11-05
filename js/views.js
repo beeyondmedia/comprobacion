@@ -1,13 +1,13 @@
 // Vistas de operación: Control, Avance, Campañas, Inventario y Usuarios.
 import { S, $, $$, esc, opt, pct, fecha, nowIso, nombreDe, pillCls, toast, can, saveF, ESTATUS, ROLES,
-  allRows, stOf, filtered, counts, stackBar, summaryHTML, periodosActivos, site, matchQuery, fold, cleanSite } from "./core.js";
+  allRows, stOf, filtered, counts, stackBar, summaryHTML, periodosActivos, site, matchQuery, fold, porNombre, cleanSite } from "./core.js";
 import { downloadXlsx } from "./excel.js";
 import { DOMINIO } from "./config.js";
 
 // ================================================================ filtros
 export function filtersHTML({ status = true, exportBtn = true } = {}) {
   const per = periodosActivos();
-  const camps = [...new Set(per.map((p) => p.campana))];
+  const camps = [...new Set(per.map((p) => p.campana))].sort(porNombre);
   const sites = [...S.catalogo.values()];
   const F = S.F;
   if (F.camp && !camps.includes(F.camp)) F.camp = "";
@@ -238,7 +238,7 @@ export function viewCampanas(main) {
   const draw = () => {
     const all = allRows(S.periodos);
     const ap = can("aprobador");
-    const camps = [...S.campanas].sort((a, b) => (b.creado || "").localeCompare(a.creado || ""));
+    const camps = [...S.campanas].sort((a, b) => porNombre(a.nombre, b.nombre));
     main.innerHTML = `<div class="pagehead"><h1>Campañas</h1>${can("verificador") ? `<a class="btn primary" href="#carga-campana">Subir campaña nueva</a>` : ""}</div>
     ${camps.length ? "" : `<div class="panel empty">Aún no hay campañas. ${can("verificador") ? `<a href="#carga-campana">Sube la primera</a>.` : ""}</div>`}
     <div class="stack">${camps.map((c) => {
