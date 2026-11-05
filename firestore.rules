@@ -3,7 +3,7 @@ rules_version = '2';
 // =====================================================================
 // Reglas de seguridad — Comprobación fotográfica Beeyond
 //   consulta    : lee todo
-//   verificador : + marca comprobaciones y arte de referencia (campos "estado" y "refs" de los periodos) y sube cargas
+//   verificador : + marca comprobaciones y arte de referencia, agrega soportes a un periodo y da de alta soportes desde la PPT, y sube cargas
 //   aprobador   : + aprueba cargas, escribe inventario, campañas y periodos
 //   admin       : + administra usuarios
 // Sin borrados físicos de datos de operación. Todo lo no declarado se niega.
@@ -44,7 +44,11 @@ service cloud.firestore {
     // ---------- inventario (un documento por ciudad)
     match /catalogo/{ciudad} {
       allow read: if active();
-      allow create, update: if atLeast('aprobador');
+      // verificador: solo puede AGREGAR soportes nuevos (alta desde la PPT); no modifica ni quita los existentes
+      allow create: if atLeast('aprobador') || (atLeast('verificador') && request.resource.data.keys().hasOnly(['sitios']));
+      allow update: if atLeast('aprobador') || (atLeast('verificador') && onlyKeys(['sitios'])
+        && request.resource.data.sitios.diff(resource.data.sitios).changedKeys().size() == 0
+        && request.resource.data.sitios.diff(resource.data.sitios).removedKeys().size() == 0);
       allow delete: if false;
     }
 
@@ -57,7 +61,9 @@ service cloud.firestore {
     match /periodos/{id} {
       allow read: if active();
       allow create: if atLeast('aprobador');
-      allow update: if atLeast('aprobador') || (atLeast('verificador') && onlyKeys(['estado','refs']));
+      // verificador: comprobaciones, arte y AGREGAR soportes al periodo (nunca quitar)
+      allow update: if atLeast('aprobador') || (atLeast('verificador') && onlyKeys(['estado','refs','sitios'])
+        && request.resource.data.get('sitios', []).hasAll(resource.data.get('sitios', [])));
       allow delete: if false;
     }
 

@@ -1,6 +1,6 @@
 // Carga de la PPT de comprobación: cuenta las fotos de cada diapositiva y las marca
 // en el periodo elegido (Foto 1…N y "En PPT: Sí"). El ✔ y el estatus no cambian.
-import { S, $, $$, esc, opt, nowIso, toast, can, periodosActivos } from "./core.js";
+import { S, $, $$, esc, opt, nowIso, toast, can, periodosActivos, matchQuery, nextSiteIds, cleanSite, fold } from "./core.js";
 import { readPptx, matchSlides, textoUbicacion } from "./ppt.js";
 import { fotosSel } from "./views.js";
 
@@ -14,7 +14,16 @@ const loadJsZip = () => jszipP || (jszipP = new Promise((ok, ko) => {
 const MAX = 5;
 const steps = (list, on) => `<div class="steps">${list.map((s, i) => `<span class="${i === on ? "on" : ""}">${i + 1}. ${s}</span>`).join("")}</div>`;
 const STEPS = ["Periodo y archivo", "Revisión", "Listo"];
-const label = (id) => { const s = S.catalogo.get(id); return s ? `${s.ub}${s.det ? " · " + s.det : ""} · ${s.sop} · ${s.owner} (${id})` : id; };
+const ESPACIOS = ["CALLE", "CENTRO COMERCIAL", "AEROPUERTO"];
+const VENUES = ["PARABUS", "KIOSCO", "BIOBOX", "MEGA VALLA", "CARTELERA DIGITAL", "LANDMARK", "ARCO DIGITAL", "MUPI", "TOTEM", "PANTALLA", "VIDEO WALL", "PUENTE"];
+// "68. Parabus CERVANTES SAAVEDRA" -> { sop: "PARABUS", ub: "CERVANTES SAAVEDRA" }
+function partirTexto(t) {
+  let u = textoUbicacion(t).replace(/^(CDMX|GDL|MTY)[\s_-]+/i, "");
+  const f = fold(u); let sop = "";
+  for (const v of VENUES) if (f.startsWith(v + " ") || f.startsWith(v + "_")) { sop = v; u = u.slice(v.length).replace(/^[\s_-]+/, ""); break; }
+  return { sop, ub: u.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim() };
+}
+const label = (id) => { if (String(id).startsWith("NUEVO:")) return "Nuevo soporte"; const s = S.catalogo.get(id); return s ? `${s.ub}${s.det ? " · " + s.det : ""} · ${s.sop} · ${s.owner} (${id})` : id; };
 const perLabel = (p) => `${p.campana} · ${p.periodo}${p.fechas ? " · " + p.fechas : ""}`;
 
 export function viewCargaPpt(main) {
@@ -77,7 +86,7 @@ export function viewCargaPpt(main) {
   function rowHTML(r, i) {
     const p = per(), ids = (p.sitios || []).filter((id) => !(p.bajas || {})[id]);
     const resto = ids.filter((id) => !r.opciones.includes(id)).sort((a, b) => label(a).localeCompare(label(b)));
-    const estado = !r.sid ? `<span class="pill p-error">Sin coincidencia</span>` : r.seguro && r.sid === r.id ? `<span class="pill p-Comprobado">Coincide</span>` : `<span class="pill p-dudoso">Revisa</span>`;
+    const estado = !r.sid ? `<span class="pill p-error">Sin coincidencia</span>` : r.sid !== r.id ? `<span class="pill p-actualizar">Elegido a mano</span>` : r.seguro ? `<span class="pill p-Comprobado">Coincide</span>` : `<span class="pill p-dudoso">Revisa</span>`;
     const c = r.sid ? cur(r.sid) : null, cn = r.sid ? curN(r.sid) : 0;
     const dif = r.sid && cn > 0 && cn !== r.n;
     return `<tr data-i="${i}">
@@ -85,12 +94,53 @@ export function viewCargaPpt(main) {
       <td><div>${esc(textoUbicacion(r.texto) || "(sin texto)")}</div><div style="margin-top:4px">${estado}</div></td>
       <td><select class="pSite" data-i="${i}" aria-label="Soporte de la diapositiva ${r.n_slide}"><option value="">— No aplicar —</option>
         ${r.opciones.length ? `<optgroup label="Más parecidos">${r.opciones.map((id) => opt(id, label(id), id === r.sid)).join("")}</optgroup>` : ""}
-        <optgroup label="Todos los soportes del periodo">${resto.map((id) => opt(id, label(id), id === r.sid)).join("")}</optgroup></select></td>
+        <optgroup label="Todos los soportes del periodo">${resto.map((id) => opt(id, label(id), id === r.sid)).join("")}</optgroup>
+        ${r.extra ? `<optgroup label="Del inventario (se agrega al periodo)">${opt(r.extra, label(r.extra), r.sid === r.extra)}</optgroup>` : ""}
+        ${r.nuevo ? `<optgroup label="Alta nueva (se agrega al inventario y al periodo)">${opt("NUEVO:" + i, "Nuevo: " + r.nuevo.ub + " · " + r.nuevo.sop + " · " + r.nuevo.owner, r.sid === "NUEVO:" + i)}</optgroup>` : ""}
+        <option value="__buscar">🔍 Buscar en todo el inventario…</option></select>
+        ${r.sid && !ids.includes(r.sid) ? `<div class="note" style="margin-top:4px">${r.sid.startsWith("NUEVO:") ? "Se dará de alta en el inventario y se agregará al periodo" : "Se agregará a este periodo"}</div>` : ""}
+        ${!r.buscar && !(r.sid && r.sid === r.id && r.seguro) ? `<button class="btn small" type="button" data-buscar="${i}" style="margin-top:4px">Buscar en todo el inventario</button>` : ""}</td>
       <td class="num"><input type="number" class="pN" data-i="${i}" min="0" max="${MAX}" value="${r.n}" style="width:56px" aria-label="Fotos a marcar">
         ${r.fotos > MAX ? `<div style="margin-top:4px"><span class="pill p-dudoso">trae ${r.fotos}, se marcan ${MAX}</span></div>` : r.fotos === 0 ? `<div class="note">sin fotos</div>` : ""}</td>
       <td>${r.sid ? `${cn} foto${cn === 1 ? "" : "s"} · PPT ${c.ppt ? "Sí" : "No"}` : "—"}</td>
       <td>${dif ? `<select class="pDec" data-i="${i}" aria-label="Qué hacer"><option value="ppt"${r.dec === "ppt" ? " selected" : ""}>Usar la PPT (${r.n})</option><option value="keep"${r.dec === "keep" ? " selected" : ""}>Conservar lo marcado (${cn})</option></select>`
-        : r.sid && r.n > 0 ? (cn === r.n ? `<span class="note">Igual (${r.n})</span>` : `Marcar ${r.n}`) : `<span class="note">No se aplica</span>`}</td></tr>`;
+        : r.sid && r.n > 0 ? (cn === r.n ? `<span class="note">Igual (${r.n})</span>` : `Marcar ${r.n}`) : `<span class="note">No se aplica</span>`}</td></tr>
+      ${r.buscar ? `<tr class="psub"><td></td><td colspan="5">${buscarHTML(r, i)}</td></tr>` : ""}`;
+  }
+  function resultados(q) {
+    if (!q.trim()) return [];
+    return [...S.catalogo.entries()].filter(([id, s]) => matchQuery(q, id, s.ub, s.sop, s.det, s.owner, s.idprov, s.alias || [])).slice(0, 8);
+  }
+  function resHTML(i) {
+    const r = rows[i], p = per(), en = new Set(p.sitios || []), bajas = p.bajas || {};
+    const res = resultados(r.q || "");
+    if (!(r.q || "").trim()) return `<div class="note">Escribe parte del nombre, el ID o el owner.</div>`;
+    return res.length ? `<div class="stack" style="gap:4px">${res.map(([id, s]) => `<div class="row" style="justify-content:space-between;align-items:center;gap:8px;border-bottom:1px solid var(--line);padding:4px 0">
+      <div style="min-width:0"><b>${esc(s.ub)}</b>${s.det ? " · " + esc(s.det) : ""} · ${esc(s.sop)} · ${esc(s.owner)} <span class="mono">${esc(id)}</span>
+      ${bajas[id] ? ` <span class="pill p-cancelada">dado de baja en el periodo</span>` : en.has(id) ? ` <span class="pill p-Comprobado">ya está en el periodo</span>` : ` <span class="pill p-dudoso">se agrega al periodo</span>`}${s.activo === false ? ` <span class="pill p-cancelada">inactivo</span>` : ""}</div>
+      ${bajas[id] ? "" : `<button class="btn small primary" type="button" data-elegir="${i}" data-id="${esc(id)}">Elegir</button>`}</div>`).join("")}</div>`
+      : `<div class="note">No encontré soportes con "${esc(r.q)}" en el inventario.</div>`;
+  }
+  function buscarHTML(r, i) {
+    const d = r.form || { esp: "CALLE", ciudad: "CDMX", owner: "", ...partirTexto(r.texto) };
+    r.form = d;
+    const ciudades = [...new Set(["CDMX", "GDL", "MTY", ...S.ciudadesDoc])];
+    return `<div class="panel stack" style="padding:10px">
+      <div class="row" style="gap:8px;align-items:center"><input type="search" class="pQ" data-i="${i}" value="${esc(r.q || "")}" placeholder="Buscar en todo el inventario" style="flex:1" aria-label="Buscar soporte">
+        <button class="btn small" type="button" data-cerrar="${i}">Cerrar</button></div>
+      <div id="pRes${i}">${resHTML(i)}</div>
+      ${r.alta ? `<div class="stack" style="gap:8px;border-top:1px solid var(--line);padding-top:8px"><b>Dar de alta un soporte nuevo</b>
+        <div class="grid2f"><label class="field"><span>Ubicación</span><input type="text" data-f="ub" data-i="${i}" value="${esc(d.ub)}"></label>
+        <label class="field"><span>Venue type</span><input type="text" data-f="sop" data-i="${i}" value="${esc(d.sop)}" list="pVenues"></label>
+        <label class="field"><span>Media owner</span><input type="text" data-f="owner" data-i="${i}" value="${esc(d.owner)}"></label>
+        <label class="field"><span>Ciudad</span><select data-f="ciudad" data-i="${i}">${ciudades.map((c) => opt(c, c, c === d.ciudad)).join("")}</select></label>
+        <label class="field"><span>Tipo de espacio</span><select data-f="esp" data-i="${i}">${ESPACIOS.map((e) => opt(e, e, e === d.esp)).join("")}</select></label>
+        <label class="field"><span>Detalle / posición (opcional)</span><input type="text" data-f="det" data-i="${i}" value="${esc(d.det || "")}"></label></div>
+        <datalist id="pVenues">${[...new Set([...VENUES, ...[...S.catalogo.values()].map((s) => s.sop).filter(Boolean)])].sort().map((v) => `<option value="${esc(v)}">`).join("")}</datalist>
+        <div class="row" style="gap:8px"><button class="btn small primary" type="button" data-alta-ok="${i}">Usar este soporte nuevo</button><button class="btn small" type="button" data-alta-no="${i}">Cancelar alta</button>
+        <span class="note">El ID se asigna al guardar (siguiente de su ciudad).</span></div></div>`
+      : `<div class="row" style="gap:8px;align-items:center"><span class="note">¿No está en el inventario?</span><button class="btn small" type="button" data-alta="${i}">Dar de alta un soporte nuevo</button></div>`}
+    </div>`;
   }
 
   const step2 = () => draw2();
@@ -98,13 +148,13 @@ export function viewCargaPpt(main) {
     const p = per();
     const k = { total: rows.length, ok: rows.filter((r) => r.sid && r.seguro && r.sid === r.id).length, sin: rows.filter((r) => !r.sid).length,
       mas: rows.filter((r) => r.fotos > MAX).length, dif: rows.filter((r) => r.sid && curN(r.sid) > 0 && curN(r.sid) !== r.n).length };
-    k.rev = k.total - k.ok - k.sin;
+    k.mano = rows.filter((r) => r.sid && r.sid !== r.id).length; k.rev = k.total - k.ok - k.sin - k.mano;
     const usados = new Set(rows.map((r) => r.sid).filter(Boolean));
     const faltan = (p.sitios || []).filter((id) => !(p.bajas || {})[id] && !usados.has(id));
     const dup = [...usados].filter((id) => rows.filter((r) => r.sid === id).length > 1);
     main.innerHTML = `<div class="pagehead"><h1>PPT de comprobación</h1></div>${steps(STEPS, 1)}
     <div class="stack"><div class="panel stack"><div class="note">Archivo: <b>${esc(fileName)}</b> · Periodo: <b>${esc(perLabel(p))}</b></div>
-      <div class="counts"><span class="pill p-Pendiente">${k.total} diapositivas</span><span class="pill p-Comprobado">${k.ok} coinciden</span>${k.rev ? `<span class="pill p-dudoso">${k.rev} por revisar</span>` : ""}${k.sin ? `<span class="pill p-error">${k.sin} sin coincidencia</span>` : ""}${k.mas ? `<span class="pill p-dudoso">${k.mas} con más de ${MAX} fotos</span>` : ""}${k.dif ? `<span class="pill p-dudoso">${k.dif} distintas a lo ya marcado</span>` : ""}</div>
+      <div class="counts"><span class="pill p-Pendiente">${k.total} diapositivas</span><span class="pill p-Comprobado">${k.ok} coinciden</span>${k.mano ? `<span class="pill p-actualizar">${k.mano} elegidos a mano</span>` : ""}${k.rev ? `<span class="pill p-dudoso">${k.rev} por revisar</span>` : ""}${k.sin ? `<span class="pill p-error">${k.sin} sin coincidencia</span>` : ""}${k.mas ? `<span class="pill p-dudoso">${k.mas} con más de ${MAX} fotos</span>` : ""}${k.dif ? `<span class="pill p-dudoso">${k.dif} distintas a lo ya marcado</span>` : ""}</div>
       ${k.mas ? `<div class="msg warn">${rows.filter((r) => r.fotos > MAX).map((r) => `Diapositiva ${r.n_slide} trae ${r.fotos} fotos`).join(" · ")}. Se marcan ${MAX}, el máximo de la app.</div>` : ""}
       ${dup.length ? `<div class="msg err">Hay soportes elegidos en más de una diapositiva: ${dup.map((id) => esc(label(id))).join(" · ")}. Corrige antes de guardar.</div>` : ""}</div>
     <div class="tablebox"><table><thead><tr><th>Diap.</th><th>Texto en la PPT</th><th>Soporte del periodo</th><th>Fotos PPT</th><th>Hoy en la app</th><th>Qué hacer</th></tr></thead>
@@ -113,17 +163,57 @@ export function viewCargaPpt(main) {
     <div class="row2"><button class="btn" type="button" id="pBack">Cambiar archivo o periodo</button><button class="btn primary" type="button" id="pApply"${dup.length ? " disabled" : ""}>Guardar fotos en la app</button></div></div>`;
     main.onchange = (e) => {
       const t = e.target, i = +t.dataset.i; if (!rows[i]) return;
-      if (t.classList.contains("pSite")) { rows[i].sid = t.value; rows[i].dec = "ppt"; draw2(); }
+      if (t.classList.contains("pSite")) {
+        if (t.value === "__buscar") { abrirBuscar(i); return; }
+        rows[i].sid = t.value; rows[i].dec = "ppt"; draw2();
+      }
+      else if (t.dataset.f) { rows[i].form[t.dataset.f] = t.value; }
       else if (t.classList.contains("pN")) { rows[i].n = Math.max(0, Math.min(MAX, Math.round(+t.value || 0))); draw2(); }
       else if (t.classList.contains("pDec")) rows[i].dec = t.value;
     };
-    $("#pBack").onclick = () => { main.onchange = null; step1(); };
+    main.oninput = (e) => {
+      const t = e.target, i = +t.dataset.i; if (!rows[i]) return;
+      if (t.classList.contains("pQ")) { rows[i].q = t.value; $("#pRes" + i).innerHTML = resHTML(i); }
+      else if (t.dataset.f) rows[i].form[t.dataset.f] = t.value;
+    };
+    main.onclick = (e) => {
+      const b = e.target.closest("button"); if (!b) return;
+      const d = b.dataset;
+      if (d.buscar != null) abrirBuscar(+d.buscar);
+      else if (d.cerrar != null) { rows[+d.cerrar].buscar = false; draw2(); }
+      else if (d.elegir != null) { const r = rows[+d.elegir], p = per(); r.sid = d.id; if (!(p.sitios || []).includes(d.id)) r.extra = d.id; r.buscar = false; r.dec = "ppt"; draw2(); }
+      else if (d.alta != null) { rows[+d.alta].alta = true; draw2(); }
+      else if (d.altaNo != null) { const r = rows[+d.altaNo]; r.alta = false; if (r.sid === "NUEVO:" + d.altaNo) r.sid = ""; r.nuevo = null; draw2(); }
+      else if (d.altaOk != null) {
+        const i = +d.altaOk, r = rows[i], f = r.form;
+        const up = (x) => String(x || "").trim().toUpperCase();
+        if (!up(f.ub) || !up(f.sop) || !up(f.owner)) { toast("Llena ubicación, venue type y media owner"); return; }
+        r.nuevo = { esp: f.esp, sop: up(f.sop), ub: up(f.ub), det: up(f.det), owner: up(f.owner), ciudad: f.ciudad };
+        r.sid = "NUEVO:" + i; r.buscar = false; r.alta = false; r.dec = "ppt"; draw2();
+      }
+    };
+    const abrirBuscar = (i) => { const r = rows[i]; r.buscar = true; if (r.q == null) r.q = partirTexto(r.texto).ub; draw2(); const q = $(`.pQ[data-i="${i}"]`); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } };
+    $("#pBack").onclick = () => { main.onchange = null; main.oninput = null; main.onclick = null; step1(); };
     $("#pApply").onclick = apply;
   }
 
   async function apply() {
-    const p = per(), fields = [], now = nowIso();
+    const p = per(), fields = [], now = nowIso(), ops = [];
     let n = 0, keep = 0;
+    // altas nuevas: siguiente ID de su ciudad
+    const porCiudad = new Map(), taken = new Set();
+    for (const r of rows) if (r.sid && r.sid.startsWith("NUEVO:")) { const c = r.nuevo.ciudad; if (!porCiudad.has(c)) porCiudad.set(c, []); porCiudad.get(c).push(r); }
+    const altas = [];
+    for (const [c, lst] of porCiudad) {
+      const ids = nextSiteIds(c, lst.length, taken); ids.forEach((x) => taken.add(x));
+      const m = lst.map((r, k) => { r.sid = ids[k]; return [ids[k], { ...cleanSite({ ...r.nuevo, alias: [textoUbicacion(r.texto)] }), creado: now, creadoPor: S.auth.uid, origen: "PPT: " + fileName }]; });
+      altas.push(...m.map(([id]) => id));
+      if (S.ciudadesDoc.has(c)) ops.push({ op: "update", path: "catalogo/" + c, fields: m.map(([id, v]) => [["sitios", id], v]) });
+      else ops.push({ op: "set", path: "catalogo/" + c, data: { sitios: Object.fromEntries(m) } });
+    }
+    // lo elegido a mano fuera del periodo se agrega aunque la diapositiva no traiga fotos todavía
+    const agregar = [...new Set(rows.filter((r) => r.sid && !(p.sitios || []).includes(r.sid)).map((r) => r.sid))];
+    if (agregar.length) fields.push([["sitios"], [...(p.sitios || []), ...new Set(agregar)]]);
     for (const r of rows) {
       if (!r.sid || r.n <= 0) continue;
       const c = cur(r.sid), cn = curN(r.sid);
@@ -132,17 +222,18 @@ export function viewCargaPpt(main) {
       if (usarPpt) { next.fotosSel = [1, 2, 3, 4, 5].map((x) => x <= r.n); next.fotos = r.n; n++; } else keep++;
       fields.push([["estado", r.sid], next]);
     }
-    if (!fields.length) { toast("No hay diapositivas para aplicar."); return; }
+    if (!fields.length) { toast("No hay diapositivas con fotos ni soportes para agregar."); return; }
     $("#pApply").disabled = true;
+    const nEst = fields.filter((f) => f[0][0] === "estado").length;
     try {
-      await S.be.batch([{ op: "update", path: "periodos/" + p.id, fields }]);
-      main.onchange = null;
+      await S.be.batch([...ops, { op: "update", path: "periodos/" + p.id, fields }]);
+      main.onchange = null; main.oninput = null; main.onclick = null;
       main.innerHTML = `<div class="pagehead"><h1>PPT de comprobación</h1></div>${steps(STEPS, 2)}
-      <div class="stack"><div class="msg ok">Listo: se actualizaron ${fields.length} soportes de ${esc(perLabel(p))}. ${n} con las fotos de la PPT${keep ? `, ${keep} conservaron lo que ya estaba marcado` : ""}. Todos quedaron con "En PPT: Sí".</div>
+      <div class="stack"><div class="msg ok">Listo: ${esc(perLabel(p))}. Se marcaron fotos en ${n} soportes${keep ? ` y ${keep} conservaron lo que ya estaba marcado` : ""}; ${nEst === 1 ? "quedó" : "quedaron"} con "En PPT: Sí".${agregar.length ? ` ${agregar.length === 1 ? "Se agregó 1 soporte" : `Se agregaron ${agregar.length} soportes`} al periodo` + (altas.length ? `; ${altas.length === 1 ? "1 se dio" : altas.length + " se dieron"} de alta en el inventario (${altas.map(esc).join(", ")})` : "") + "." : ""}</div>
       <div class="row2"><a class="btn primary" href="#control" id="pGo">Ver en Control</a><button class="btn" type="button" id="pOtra">Cargar otra PPT</button></div></div>`;
       $("#pGo").onclick = () => { S.F.camp = p.campana; S.F.per = p.periodo; S.F.st = ""; S.F.q = ""; try { localStorage.setItem("bym-filtros", JSON.stringify(S.F)); } catch (e) {} };
       $("#pOtra").onclick = () => { rows = []; step1(); };
-    } catch (e) { console.error(e); $("#pApply").disabled = false; toast("No se pudo guardar. Revisa tu conexión o tus permisos."); }
+    } catch (e) { console.error(e); for (const r of rows) if (r.nuevo && altas.includes(r.sid)) r.sid = "NUEVO:" + rows.indexOf(r); $("#pApply").disabled = false; toast("No se pudo guardar. Revisa tu conexión o tus permisos."); }
   }
 
   step1();

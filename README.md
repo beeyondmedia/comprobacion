@@ -12,7 +12,7 @@ App web interna para controlar la comprobación fotográfica de los soportes de 
 | Rol | Puede |
 |---|---|
 | Consulta | Ver control, avance, campañas e inventario; exportar a Excel |
-| Verificador | Lo anterior + marcar comprobaciones (fotos, Drive, PPT, estatus, ✔), agregar el arte de referencia de cada periodo (links de Drive) y subir Excels de campañas o inventario para aprobación |
+| Verificador | Lo anterior + marcar comprobaciones (fotos, Drive, PPT, estatus, ✔), agregar el arte de referencia de cada periodo (links de Drive), cargar la PPT de comprobación (incluido agregar soportes al periodo o darlos de alta desde ahí) y subir Excels de campañas o inventario para aprobación |
 | Aprobador | Lo anterior + aprobar o rechazar cargas **de otras personas**, editar, duplicar y archivar campañas |
 | Administrador | Todo + dar de alta usuarios, cambiar roles y desactivar usuarios. Puede aprobar sus propias cargas |
 
@@ -63,6 +63,7 @@ Los archivos de la carga inicial **no van en el repositorio** (es público). Sú
 **PPT de comprobación** (Verificador, Aprobador y Administrador; no necesita aprobación):
 - Eliges la campaña y el periodo y subes el `.pptx`. Una diapositiva = una ubicación: el nombre se toma del cuadro de texto de la izquierda y se cuentan las fotos de la campaña (imágenes grandes); fondos, logos, íconos y mapas no cuentan.
 - Antes de guardar ves cada diapositiva con el soporte que encontró (Coincide / Revisa / Sin coincidencia) y puedes cambiarlo o ajustar el número de fotos.
+- Si el soporte no aparece en la lista, **Buscar en todo el inventario** permite elegir cualquier soporte; al guardar se agrega al periodo. Si tampoco existe en el inventario, ahí mismo se da de alta (ubicación, venue type, owner, ciudad y tipo de espacio) con el siguiente ID de su ciudad.
 - Si una diapositiva trae más de 5 fotos, se marcan 5 y te avisa. Si el soporte ya tenía fotos marcadas distintas, eliges entre usar la PPT o conservar lo marcado.
 - Al guardar se marcan Foto 1…N y "En PPT: Sí". El ✔ y el estatus no cambian.
 

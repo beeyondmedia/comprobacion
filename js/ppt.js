@@ -61,9 +61,15 @@ export async function parsePptx(zip) {
       const plantilla = slides.length >= 4 && (freq.get(sig(p)) || 0) >= slides.length * 0.8 && !foto;
       return !plantilla;
     });
-    const izq = s.textos.filter((t) => t.x + t.cx / 2 < W * 0.45 && !IGNORAR_TXT.test(t.t));
-    izq.sort((a, b) => b.t.length - a.t.length);
-    const texto = (izq[0] || s.textos.filter((t) => !IGNORAR_TXT.test(t.t)).sort((a, b) => b.t.length - a.t.length)[0] || { t: "" }).t;
+    // Nombre de la ubicación: el texto numerado ("12. …") de la izquierda; si no hay, el más largo
+    // de la izquierda fuera del encabezado (el título de la campaña) y que no sea solo la ciudad.
+    const NUM = /^\s*\d+\s*[.)-]/, CIUDAD = /^(CDMX|GDL|MTY|EDOMEX|MONTERREY|GUADALAJARA|CIUDAD DE MEXICO|ESTADO DE MEXICO|[A-Z]{2,5})$/i;
+    const cand = s.textos.filter((t) => !IGNORAR_TXT.test(t.t) && !CIUDAD.test(t.t.trim()));
+    const izq = cand.filter((t) => t.x + t.cx / 2 < W * 0.45);
+    const byLen = (a, b) => b.t.length - a.t.length;
+    const pick = izq.filter((t) => NUM.test(t.t)).sort(byLen)[0] || cand.filter((t) => NUM.test(t.t)).sort(byLen)[0]
+      || izq.filter((t) => t.y + t.cy / 2 > H * 0.3).sort(byLen)[0] || izq.sort(byLen)[0] || cand.sort(byLen)[0];
+    const texto = pick ? pick.t : "";
     return { n: s.n, texto, fotos: fotos.length };
   });
 }
