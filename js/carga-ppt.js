@@ -30,6 +30,8 @@ export function viewCargaPpt(main) {
   if (!can("verificador")) { main.innerHTML = `<div class="pagehead"><h1>PPT de comprobación</h1></div><div class="msg warn">Tu rol solo permite consultar.</div>`; return; }
   let pid = S.F.camp ? (periodosActivos().find((p) => p.campana === S.F.camp && (!S.F.per || p.periodo === S.F.per))?.id || "") : "";
   let rows = [], fileName = "", busy = false, camp = "", uidN = 0;
+  let faltDec = {}; // sid -> { acc: "dejar" | "baja", motivo }
+  const MOTIVO = "No sale en la PPT de comprobación";
   // Otra cara de la misma diapositiva: una fila más, ligada a la de la diapositiva. Las fotos se reparten.
   const nuevaCara = (r, sid = "", auto = false) => {
     const tot = Math.min(r.fotos, MAX * 2), caras = rows.filter((x) => x.cara === r.uid).length + 2;
@@ -81,6 +83,17 @@ export function viewCargaPpt(main) {
       const per = S.periodos.find((p) => p.id === pid);
       const sitios = (per.sitios || []).filter((id) => !(per.bajas || {})[id]).map((id) => [id, S.catalogo.get(id) || { ub: id }]);
       rows = matchSlides(slides, sitios).map((r) => ({ ...r, uid: ++uidN, n_slide: r.n, sid: r.id, n: Math.min(r.fotos, MAX), dec: "ppt" }));
+      // diapositivas sin coincidencia en el plan: se buscan en todo el inventario (fuera del plan)
+      const enPlan = new Set(per.sitios || []);
+      const sinMatch = rows.filter((r) => !r.sid && r.texto);
+      if (sinMatch.length) {
+        const fuera = [...S.catalogo.entries()].filter(([id, s]) => !enPlan.has(id) && s.activo !== false);
+        matchSlides(sinMatch, fuera).forEach((m, j) => {
+          const r = sinMatch[j];
+          if (m.id && m.seguro && m.score >= 1) { r.sid = m.id; r.extra = m.id; r.fuera = true; r.opcionesFuera = m.opciones.filter((x) => x !== m.id).slice(0, 3); }
+        });
+      }
+      faltDec = {};
       // propone la segunda cara cuando el texto también describe otra cara del mismo sitio (MASARYK I / MASARYK II)
       const usados = new Set(rows.map((r) => r.sid).filter(Boolean));
       for (const r of [...rows]) {
@@ -107,7 +120,7 @@ export function viewCargaPpt(main) {
     const resto = ids.filter((id) => !r.opciones.includes(id)).sort((a, b) => label(a).localeCompare(label(b)));
     const caras = rows.filter((x) => x.cara === r.uid).length;
     const caraPill = !r.cara && caras && r.sid ? `<span class="pill p-Comprobado">${caras + 1} caras</span>` : r.cara ? `<span class="pill p-Pendiente">${r.auto ? "Otra cara (propuesta)" : "Otra cara"}</span> ` : "";
-    const estado = caraPill + ((r.cara || caras) && r.sid ? "" : !r.sid ? `<span class="pill p-error">${r.cara ? "Elige la otra cara" : "Sin coincidencia"}</span>` : r.sid !== r.id ? `<span class="pill p-actualizar">Elegido a mano</span>` : r.seguro ? `<span class="pill p-Comprobado">Coincide</span>` : `<span class="pill p-dudoso">Revisa</span>`);
+    const estado = caraPill + ((r.cara || caras) && r.sid ? "" : r.fuera && r.sid === r.extra ? `<span class="pill p-dudoso">Fuera del plan: se agregará</span>` : !r.sid ? `<span class="pill p-error">${r.cara ? "Elige la otra cara" : "Sin coincidencia"}</span>` : r.sid !== r.id ? `<span class="pill p-actualizar">Elegido a mano</span>` : r.seguro ? `<span class="pill p-Comprobado">Coincide</span>` : `<span class="pill p-dudoso">Revisa</span>`);
     const c = r.sid ? cur(r.sid) : null, cn = r.sid ? curN(r.sid) : 0;
     const dif = r.sid && cn > 0 && cn !== r.n;
     return `<tr data-i="${i}"${r.cara ? ' class="pcara"' : ""}>
@@ -118,7 +131,7 @@ export function viewCargaPpt(main) {
       <td><select class="pSite" data-i="${i}" aria-label="Soporte de la diapositiva ${r.n_slide}"><option value="">— No aplicar —</option>
         ${r.opciones.length ? `<optgroup label="Más parecidos">${r.opciones.map((id) => opt(id, label(id), id === r.sid)).join("")}</optgroup>` : ""}
         <optgroup label="Todos los soportes del periodo">${resto.map((id) => opt(id, label(id), id === r.sid)).join("")}</optgroup>
-        ${r.extra ? `<optgroup label="Del inventario (se agrega al periodo)">${opt(r.extra, label(r.extra), r.sid === r.extra)}</optgroup>` : ""}
+        ${r.extra || (r.opcionesFuera || []).length ? `<optgroup label="Del inventario, fuera del plan (se agrega al periodo)">${[...new Set([r.extra, ...(r.opcionesFuera || [])].filter(Boolean))].map((x) => opt(x, label(x), r.sid === x)).join("")}</optgroup>` : ""}
         ${r.nuevo ? `<optgroup label="Alta nueva (se agrega al inventario y al periodo)">${opt("NUEVO:" + r.uid, "Nuevo: " + r.nuevo.ub + " · " + r.nuevo.sop + " · " + r.nuevo.owner, r.sid === "NUEVO:" + r.uid)}</optgroup>` : ""}
         <option value="__buscar">🔍 Buscar en todo el inventario…</option></select>
         ${r.sid && !ids.includes(r.sid) ? `<div class="note" style="margin-top:4px">${r.sid.startsWith("NUEVO:") ? "Se dará de alta en el inventario y se agregará al periodo" : "Se agregará a este periodo"}</div>` : ""}
@@ -167,42 +180,68 @@ export function viewCargaPpt(main) {
   }
 
   const step2 = () => draw2();
+  // Ubicaciones del plan que no salen en la PPT: dejarlas pendientes o darlas de baja (con motivo)
+  function faltanHTML(faltan) {
+    const nb = faltan.filter((id) => faltDec[id]?.acc === "baja").length;
+    return `<div class="panel stack" id="pFalt"><div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <div><b>${faltan.length} ubicaci${faltan.length === 1 ? "ón" : "ones"} del plan no ${faltan.length === 1 ? "sale" : "salen"} en la PPT.</b> <span class="note">¿Qué hacemos con ${faltan.length === 1 ? "ella" : "ellas"}? Si no eliges nada, se quedan pendientes.</span></div>
+      <div class="row" style="gap:6px"><button class="btn small" type="button" data-falt-todas="dejar">Dejar todas pendientes</button><button class="btn small" type="button" data-falt-todas="baja">Dar de baja todas</button></div></div>
+      ${nb ? `<div class="msg warn">Se ${nb === 1 ? "dará" : "darán"} de baja ${nb} del plan: salen de Control y Avance, y quedan registradas con su motivo en Campañas › Editar soportes (se pueden reactivar).</div>` : ""}
+      <div class="tablebox"><table><thead><tr><th>Ubicación</th><th>Hoy en la app</th><th>Qué hacer</th><th>Motivo de la baja</th></tr></thead><tbody>
+      ${faltan.map((id) => { const d = faltDec[id] || { acc: "dejar", motivo: MOTIVO }, c = cur(id), cn = curN(id);
+        return `<tr><td>${esc(label(id))}</td><td>${cn} foto${cn === 1 ? "" : "s"} · ${esc(c.estatus || "Pendiente")}</td>
+        <td><select data-falt="${esc(id)}" style="min-width:190px" aria-label="Qué hacer con ${esc(id)}">${opt("dejar", "Dejar pendiente", d.acc !== "baja")}${opt("baja", "Dar de baja del plan", d.acc === "baja")}</select></td>
+        <td>${d.acc === "baja" ? `<input type="text" data-falt-mot="${esc(id)}" value="${esc(d.motivo)}" aria-label="Motivo" style="width:100%">` : `<span class="note">—</span>`}</td></tr>`; }).join("")}
+      </tbody></table></div></div>`;
+  }
   function draw2() {
     const p = per();
     const sl = rows.filter((r) => !r.cara);
     const k = { total: sl.length, ok: sl.filter((r) => r.sid && r.sid === r.id && (r.seguro || rows.some((x) => x.cara === r.uid))).length, sin: sl.filter((r) => !r.sid).length,
       caras: rows.filter((r) => r.cara).length, mas: sl.filter((r) => r.fotos > MAX && !rows.some((x) => x.cara === r.uid)).length, dif: rows.filter((r) => r.sid && curN(r.sid) > 0 && curN(r.sid) !== r.n).length };
-    k.mano = sl.filter((r) => r.sid && r.sid !== r.id).length; k.rev = k.total - k.ok - k.sin - k.mano;
+    k.fuera = sl.filter((r) => r.sid && !(p.sitios || []).includes(r.sid)).length;
+    k.mano = sl.filter((r) => r.sid && r.sid !== r.id && !(r.fuera && r.sid === r.extra)).length; k.rev = k.total - k.ok - k.sin - k.mano - sl.filter((r) => r.fuera && r.sid === r.extra).length;
     const usados = new Set(rows.map((r) => r.sid).filter(Boolean));
     const faltan = (p.sitios || []).filter((id) => !(p.bajas || {})[id] && !usados.has(id));
     const dup = [...usados].filter((id) => rows.filter((r) => r.sid === id).length > 1);
     main.innerHTML = `<div class="pagehead"><h1>PPT de comprobación</h1></div>${steps(STEPS, 1)}
     <div class="stack"><div class="panel stack"><div class="note">Archivo: <b>${esc(fileName)}</b> · Periodo: <b>${esc(perLabel(p))}</b></div>
-      <div class="counts"><span class="pill p-Pendiente">${k.total} diapositivas</span><span class="pill p-Comprobado">${k.ok} coinciden</span>${k.mano ? `<span class="pill p-actualizar">${k.mano} elegidos a mano</span>` : ""}${k.caras ? `<span class="pill p-Pendiente">${k.caras} cara${k.caras === 1 ? "" : "s"} extra</span>` : ""}${k.rev ? `<span class="pill p-dudoso">${k.rev} por revisar</span>` : ""}${k.sin ? `<span class="pill p-error">${k.sin} sin coincidencia</span>` : ""}${k.mas ? `<span class="pill p-dudoso">${k.mas} con más de ${MAX} fotos</span>` : ""}${k.dif ? `<span class="pill p-dudoso">${k.dif} distintas a lo ya marcado</span>` : ""}</div>
+      <div class="counts"><span class="pill p-Pendiente">${k.total} diapositivas</span><span class="pill p-Comprobado">${k.ok} coinciden</span>${k.mano ? `<span class="pill p-actualizar">${k.mano} elegidos a mano</span>` : ""}${k.fuera ? `<span class="pill p-dudoso">${k.fuera} fuera del plan (se agregan)</span>` : ""}${k.caras ? `<span class="pill p-Pendiente">${k.caras} cara${k.caras === 1 ? "" : "s"} extra</span>` : ""}${k.rev ? `<span class="pill p-dudoso">${k.rev} por revisar</span>` : ""}${k.sin ? `<span class="pill p-error">${k.sin} sin coincidencia</span>` : ""}${k.mas ? `<span class="pill p-dudoso">${k.mas} con más de ${MAX} fotos</span>` : ""}${k.dif ? `<span class="pill p-dudoso">${k.dif} distintas a lo ya marcado</span>` : ""}</div>
       ${k.mas ? `<div class="msg warn">${sl.filter((r) => r.fotos > MAX && !rows.some((x) => x.cara === r.uid)).map((r) => `Diapositiva ${r.n_slide} trae ${r.fotos} fotos`).join(" · ")}. Se marcan ${MAX}, el máximo de la app.</div>` : ""}
       ${dup.length ? `<div class="msg err">Hay soportes elegidos en más de una diapositiva: ${dup.map((id) => esc(label(id))).join(" · ")}. Corrige antes de guardar.</div>` : ""}</div>
     <div class="tablebox"><table><thead><tr><th>Diap.</th><th>Texto en la PPT</th><th>Soporte del periodo</th><th>Fotos PPT</th><th>Hoy en la app</th><th>Qué hacer</th></tr></thead>
       <tbody id="pRows">${rows.map(rowHTML).join("")}</tbody></table></div>
-    ${faltan.length ? `<details class="sec"><summary>Soportes del periodo sin diapositiva <span class="pill p-dudoso">${faltan.length}</span></summary><div class="in"><ul>${faltan.map((id) => `<li>${esc(label(id))}</li>`).join("")}</ul></div></details>` : ""}
+    ${faltan.length ? faltanHTML(faltan) : ""}
     <div class="row2"><button class="btn" type="button" id="pBack">Cambiar archivo o periodo</button><button class="btn primary" type="button" id="pApply"${dup.length ? " disabled" : ""}>Guardar fotos en la app</button></div></div>`;
     main.onchange = (e) => {
-      const t = e.target, i = +t.dataset.i; if (!rows[i]) return;
+      const t = e.target;
+      if (t.dataset.falt) { confirmarBajas = false; const d = faltDec[t.dataset.falt] || (faltDec[t.dataset.falt] = { acc: "dejar", motivo: MOTIVO }); d.acc = t.value; draw2(); return; }
+      const i = +t.dataset.i; if (!rows[i]) return;
       if (t.classList.contains("pSite")) {
         if (t.value === "__buscar") { abrirBuscar(i); return; }
-        rows[i].sid = t.value; rows[i].dec = "ppt"; draw2();
+        rows[i].sid = t.value; rows[i].dec = "ppt";
+        if (t.value && !t.value.startsWith("NUEVO:") && !(per().sitios || []).includes(t.value)) rows[i].extra = t.value;
+        draw2();
       }
       else if (t.dataset.f) { rows[i].form[t.dataset.f] = t.value; }
       else if (t.classList.contains("pN")) { rows[i].n = Math.max(0, Math.min(MAX, Math.round(+t.value || 0))); draw2(); }
       else if (t.classList.contains("pDec")) rows[i].dec = t.value;
     };
     main.oninput = (e) => {
-      const t = e.target, i = +t.dataset.i; if (!rows[i]) return;
+      const t = e.target;
+      if (t.dataset.faltMot) { (faltDec[t.dataset.faltMot] || (faltDec[t.dataset.faltMot] = { acc: "baja", motivo: "" })).motivo = t.value; return; }
+      const i = +t.dataset.i; if (!rows[i]) return;
       if (t.classList.contains("pQ")) { rows[i].q = t.value; $("#pRes" + i).innerHTML = resHTML(i); }
       else if (t.dataset.f) rows[i].form[t.dataset.f] = t.value;
     };
     main.onclick = (e) => {
       const b = e.target.closest("button"); if (!b) return;
       const d = b.dataset;
+      if (d.faltTodas) { confirmarBajas = false;
+        const p = per(), usados = new Set(rows.map((r) => r.sid).filter(Boolean));
+        for (const id of (p.sitios || []).filter((x) => !(p.bajas || {})[x] && !usados.has(x))) faltDec[id] = { acc: d.faltTodas, motivo: faltDec[id]?.motivo || MOTIVO };
+        draw2(); return;
+      }
       if (d.buscar != null) abrirBuscar(+d.buscar);
       else if (d.cara != null) {
         const i = +d.cara, r = rows[i], c = nuevaCara(r);
@@ -231,6 +270,7 @@ export function viewCargaPpt(main) {
     $("#pApply").onclick = apply;
   }
 
+  let confirmarBajas = false;
   async function apply() {
     const p = per(), fields = [], now = nowIso(), ops = [];
     let n = 0, keep = 0;
@@ -247,7 +287,10 @@ export function viewCargaPpt(main) {
     }
     // lo elegido a mano fuera del periodo se agrega aunque la diapositiva no traiga fotos todavía
     const agregar = [...new Set(rows.filter((r) => r.sid && !(p.sitios || []).includes(r.sid)).map((r) => r.sid))];
-    if (agregar.length) fields.push([["sitios"], [...(p.sitios || []), ...new Set(agregar)]]);
+    const usados = new Set(rows.map((r) => r.sid).filter(Boolean));
+    const bajas = (p.sitios || []).filter((id) => !(p.bajas || {})[id] && !usados.has(id) && faltDec[id]?.acc === "baja");
+    if (agregar.length || bajas.length) fields.push([["sitios"], [...(p.sitios || []).filter((id) => !bajas.includes(id)), ...agregar]]);
+    for (const id of bajas) fields.push([["bajas", id], { fecha: now, por: S.auth.uid, motivo: (faltDec[id].motivo || "").trim() || MOTIVO, origen: "PPT: " + fileName }]);
     for (const r of rows) {
       if (!r.sid || r.n <= 0) continue;
       const c = cur(r.sid), cn = curN(r.sid);
@@ -256,14 +299,15 @@ export function viewCargaPpt(main) {
       if (usarPpt) { next.fotosSel = [1, 2, 3, 4, 5].map((x) => x <= r.n); next.fotos = r.n; n++; } else keep++;
       fields.push([["estado", r.sid], next]);
     }
-    if (!fields.length) { toast("No hay diapositivas con fotos ni soportes para agregar."); return; }
+    if (!fields.length) { toast("No hay fotos, soportes para agregar ni bajas que guardar."); return; }
+    if (bajas.length && !confirmarBajas) { confirmarBajas = true; $("#pApply").textContent = `Confirmar: guardar y dar de baja ${bajas.length}`; toast(`Vas a dar de baja ${bajas.length} ubicaci${bajas.length === 1 ? "ón" : "ones"} del plan. Presiona otra vez para confirmar.`); return; }
     $("#pApply").disabled = true;
     const nEst = fields.filter((f) => f[0][0] === "estado").length;
     try {
       await S.be.batch([...ops, { op: "update", path: "periodos/" + p.id, fields }]);
       main.onchange = null; main.oninput = null; main.onclick = null;
       main.innerHTML = `<div class="pagehead"><h1>PPT de comprobación</h1></div>${steps(STEPS, 2)}
-      <div class="stack"><div class="msg ok">Listo: ${esc(perLabel(p))}. Se marcaron fotos en ${n} soportes${keep ? ` y ${keep} conservaron lo que ya estaba marcado` : ""}; ${nEst === 1 ? "quedó" : "quedaron"} con "En PPT: Sí".${agregar.length ? ` ${agregar.length === 1 ? "Se agregó 1 soporte" : `Se agregaron ${agregar.length} soportes`} al periodo` + (altas.length ? `; ${altas.length === 1 ? "1 se dio" : altas.length + " se dieron"} de alta en el inventario (${altas.map(esc).join(", ")})` : "") + "." : ""}</div>
+      <div class="stack"><div class="msg ok">Listo: ${esc(perLabel(p))}. Se marcaron fotos en ${n} soportes${keep ? ` y ${keep} conservaron lo que ya estaba marcado` : ""}; ${nEst === 1 ? "quedó" : "quedaron"} con "En PPT: Sí".${agregar.length ? ` ${agregar.length === 1 ? "Se agregó 1 soporte" : `Se agregaron ${agregar.length} soportes`} al periodo` + (altas.length ? `; ${altas.length === 1 ? "1 se dio" : altas.length + " se dieron"} de alta en el inventario (${altas.map(esc).join(", ")})` : "") + "." : ""}${bajas.length ? ` ${bajas.length === 1 ? "Se dio de baja 1 ubicación" : `Se dieron de baja ${bajas.length} ubicaciones`} del plan.` : ""}</div>
       <div class="row2"><a class="btn primary" href="#control" id="pGo">Ver en Control</a><button class="btn" type="button" id="pOtra">Cargar otra PPT</button></div></div>`;
       $("#pGo").onclick = () => { S.F.camp = p.campana; S.F.per = p.periodo; S.F.st = ""; S.F.q = ""; try { localStorage.setItem("bym-filtros", JSON.stringify(S.F)); } catch (e) {} };
       $("#pOtra").onclick = () => { rows = []; step1(); };

@@ -61,9 +61,13 @@ service cloud.firestore {
     match /periodos/{id} {
       allow read: if active();
       allow create: if atLeast('aprobador');
-      // verificador: comprobaciones, arte y AGREGAR soportes al periodo (nunca quitar)
-      allow update: if atLeast('aprobador') || (atLeast('verificador') && onlyKeys(['estado','refs','sitios'])
-        && request.resource.data.get('sitios', []).hasAll(resource.data.get('sitios', [])));
+      // verificador: comprobaciones, arte, agregar soportes al periodo y darlos de baja.
+      // Todo soporte que sale de la lista debe quedar registrado en "bajas" (con motivo); las bajas no se borran ni se cambian.
+      allow update: if atLeast('aprobador') || (atLeast('verificador') && onlyKeys(['estado','refs','sitios','bajas'])
+        && resource.data.get('sitios', []).toSet().difference(request.resource.data.get('sitios', []).toSet())
+             .difference(request.resource.data.get('bajas', {}).keys().toSet()).size() == 0
+        && request.resource.data.get('bajas', {}).diff(resource.data.get('bajas', {})).removedKeys().size() == 0
+        && request.resource.data.get('bajas', {}).diff(resource.data.get('bajas', {})).changedKeys().size() == 0);
       allow delete: if false;
     }
 
