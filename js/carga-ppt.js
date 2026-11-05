@@ -20,18 +20,31 @@ const perLabel = (p) => `${p.campana} · ${p.periodo}${p.fechas ? " · " + p.fec
 export function viewCargaPpt(main) {
   if (!can("verificador")) { main.innerHTML = `<div class="pagehead"><h1>PPT de comprobación</h1></div><div class="msg warn">Tu rol solo permite consultar.</div>`; return; }
   let pid = S.F.camp ? (periodosActivos().find((p) => p.campana === S.F.camp && (!S.F.per || p.periodo === S.F.per))?.id || "") : "";
-  let rows = [], fileName = "", busy = false;
+  let rows = [], fileName = "", busy = false, camp = "";
   loadJsZip().catch(() => {});
 
   const step1 = () => {
     const pers = periodosActivos();
+    const camps = [...new Set(pers.map((p) => p.campana))].sort((a, b) => a.localeCompare(b, "es"));
+    camp = pers.find((p) => p.id === pid)?.campana || camp;
     main.innerHTML = `<div class="pagehead"><h1>PPT de comprobación</h1></div>${steps(STEPS, 0)}
     <div class="stack"><div class="panel stack">
-      <label class="field"><span>Campaña y periodo</span><select id="pPer"><option value="">Elige la campaña y el periodo…</option>${pers.map((p) => opt(p.id, perLabel(p) + ` (${(p.sitios || []).length} soportes)`, p.id === pid)).join("")}</select></label>
-      <div class="note">Solo se buscan las ubicaciones de ese periodo.</div></div>
+      <div class="grid2f"><label class="field"><span>Campaña</span><select id="pCamp"><option value="">Elige la campaña…</option>${camps.map((c) => opt(c, c, c === camp)).join("")}</select></label>
+      <label class="field"><span>Periodo</span><select id="pPer"></select></label></div>
+      <div class="note" id="pInfo">Solo se buscan las ubicaciones de ese periodo.</div></div>
     <div class="drop" id="pdrop"><b>Sube la presentación de comprobación (.pptx)</b><span class="note">Arrastra el archivo aquí o</span><label class="btn primary">Elegir archivo<input type="file" id="pdrop-in" accept=".pptx" hidden></label><div id="pmsg" class="note" hidden></div></div>
     <div class="panel note">La app lee cada diapositiva: toma el nombre de la ubicación del cuadro de texto de la izquierda y cuenta las fotos de la campaña (las imágenes grandes); fondos, logos, íconos y mapas no cuentan. Antes de guardar te muestra lo que encontró para que lo revises. Se marcan Foto 1…N (máximo 5) y "En PPT: Sí"; el ✔ y el estatus no cambian.</div></div>`;
-    $("#pPer").onchange = (e) => (pid = e.target.value);
+    const fillPer = () => {
+      const lst = pers.filter((p) => p.campana === camp);
+      if (!lst.some((p) => p.id === pid)) pid = lst.length === 1 ? lst[0].id : "";
+      $("#pPer").innerHTML = (camp ? (lst.length > 1 ? `<option value="">Elige el periodo…</option>` : "") : `<option value="">Primero elige la campaña</option>`) + lst.map((p) => opt(p.id, p.periodo, p.id === pid)).join("");
+      $("#pPer").disabled = !camp;
+      const p = lst.find((x) => x.id === pid);
+      $("#pInfo").innerHTML = p ? `${p.fechas ? esc(p.fechas) + " · " : ""}<b>${(p.sitios || []).length} soportes</b>. Solo se buscan las ubicaciones de ese periodo.` : "Solo se buscan las ubicaciones del periodo que elijas.";
+    };
+    $("#pCamp").onchange = (e) => { camp = e.target.value; fillPer(); };
+    $("#pPer").onchange = (e) => { pid = e.target.value; fillPer(); };
+    fillPer();
     const box = $("#pdrop"), inp = $("#pdrop-in");
     inp.onchange = () => inp.files[0] && onFile(inp.files[0]);
     box.ondragover = (e) => { e.preventDefault(); box.classList.add("over"); };
@@ -41,7 +54,7 @@ export function viewCargaPpt(main) {
 
   async function onFile(f) {
     if (busy) return;
-    if (!pid) { toast("Primero elige la campaña y el periodo."); $("#pPer").focus(); return; }
+    if (!pid) { toast("Primero elige la campaña y el periodo."); (camp ? $("#pPer") : $("#pCamp")).focus(); return; }
     if (!/\.pptx$/i.test(f.name)) { toast("Sube el archivo en formato .pptx (PowerPoint)."); return; }
     const m = $("#pmsg"); m.hidden = false; m.textContent = "Leyendo la presentación… (puede tardar unos segundos si es pesada)"; busy = true;
     try {
