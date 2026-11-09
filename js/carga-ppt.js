@@ -120,7 +120,9 @@ export function viewCargaPpt(main) {
     const resto = ids.filter((id) => !r.opciones.includes(id)).sort((a, b) => label(a).localeCompare(label(b)));
     const caras = rows.filter((x) => x.cara === r.uid).length;
     const caraPill = !r.cara && caras && r.sid ? `<span class="pill p-Comprobado">${caras + 1} caras</span>` : r.cara ? `<span class="pill p-Pendiente">${r.auto ? "Otra cara (propuesta)" : "Otra cara"}</span> ` : "";
-    const estado = caraPill + ((r.cara || caras) && r.sid ? "" : r.fuera && r.sid === r.extra ? `<span class="pill p-dudoso">Fuera del plan: se agregará</span>` : !r.sid ? `<span class="pill p-error">${r.cara ? "Elige la otra cara" : "Sin coincidencia"}</span>` : r.sid !== r.id ? `<span class="pill p-actualizar">Elegido a mano</span>` : r.seguro ? `<span class="pill p-Comprobado">Coincide</span>` : `<span class="pill p-dudoso">Revisa</span>`);
+    const otras = r.sid ? rows.filter((x) => x !== r && x.sid === r.sid).map((x) => x.n_slide) : [];
+    const repPill = otras.length ? `<span class="pill p-dudoso">Repetido: también en diap. ${[...new Set(otras)].join(", ")}</span> ` : "";
+    const estado = repPill + caraPill + ((r.cara || caras) && r.sid ? "" : r.fuera && r.sid === r.extra ? `<span class="pill p-dudoso">Fuera del plan: se agregará</span>` : !r.sid ? `<span class="pill p-error">${r.cara ? "Elige la otra cara" : "Sin coincidencia"}</span>` : r.sid !== r.id ? `<span class="pill p-actualizar">Elegido a mano</span>` : r.seguro ? `<span class="pill p-Comprobado">Coincide</span>` : `<span class="pill p-dudoso">Revisa</span>`);
     const c = r.sid ? cur(r.sid) : null, cn = r.sid ? curN(r.sid) : 0;
     const dif = r.sid && cn > 0 && cn !== r.n;
     return `<tr data-i="${i}"${r.cara ? ' class="pcara"' : ""}>
@@ -180,6 +182,8 @@ export function viewCargaPpt(main) {
   }
 
   const step2 = () => draw2();
+  // Un mismo soporte en varias diapositivas: no bloquea; se suman sus fotos (máximo 5)
+  const dupHTML = (dup) => `<div class="msg warn">${dup.length === 1 ? "1 soporte aparece" : dup.length + " soportes aparecen"} en más de una diapositiva: ${dup.map((id) => `<b>${esc(label(id))}</b> (diap. ${rows.filter((r) => r.sid === id).map((r) => r.n_slide).join(", ")})`).join(" · ")}. Al guardar se suman sus fotos (máximo ${MAX}). Si no es el mismo soporte, cámbialo en la fila marcada como "Repetido".</div>`;
   // Ubicaciones del plan que no salen en la PPT: dejarlas pendientes o darlas de baja (con motivo)
   function faltanHTML(faltan) {
     const nb = faltan.filter((id) => faltDec[id]?.acc === "baja").length;
@@ -208,11 +212,12 @@ export function viewCargaPpt(main) {
     <div class="stack"><div class="panel stack"><div class="note">Archivo: <b>${esc(fileName)}</b> · Periodo: <b>${esc(perLabel(p))}</b></div>
       <div class="counts"><span class="pill p-Pendiente">${k.total} diapositivas</span><span class="pill p-Comprobado">${k.ok} coinciden</span>${k.mano ? `<span class="pill p-actualizar">${k.mano} elegidos a mano</span>` : ""}${k.fuera ? `<span class="pill p-dudoso">${k.fuera} fuera del plan (se agregan)</span>` : ""}${k.caras ? `<span class="pill p-Pendiente">${k.caras} cara${k.caras === 1 ? "" : "s"} extra</span>` : ""}${k.rev ? `<span class="pill p-dudoso">${k.rev} por revisar</span>` : ""}${k.sin ? `<span class="pill p-error">${k.sin} sin coincidencia</span>` : ""}${k.mas ? `<span class="pill p-dudoso">${k.mas} con más de ${MAX} fotos</span>` : ""}${k.dif ? `<span class="pill p-dudoso">${k.dif} distintas a lo ya marcado</span>` : ""}</div>
       ${k.mas ? `<div class="msg warn">${sl.filter((r) => r.fotos > MAX && !rows.some((x) => x.cara === r.uid)).map((r) => `Diapositiva ${r.n_slide} trae ${r.fotos} fotos`).join(" · ")}. Se marcan ${MAX}, el máximo de la app.</div>` : ""}
-      ${dup.length ? `<div class="msg err">Hay soportes elegidos en más de una diapositiva: ${dup.map((id) => esc(label(id))).join(" · ")}. Corrige antes de guardar.</div>` : ""}</div>
+      ${dup.length ? dupHTML(dup) : ""}</div>
     <div class="tablebox"><table><thead><tr><th>Diap.</th><th>Texto en la PPT</th><th>Soporte del periodo</th><th>Fotos PPT</th><th>Hoy en la app</th><th>Qué hacer</th></tr></thead>
       <tbody id="pRows">${rows.map(rowHTML).join("")}</tbody></table></div>
     ${faltan.length ? faltanHTML(faltan) : ""}
-    <div class="row2"><button class="btn" type="button" id="pBack">Cambiar archivo o periodo</button><button class="btn primary" type="button" id="pApply"${dup.length ? " disabled" : ""}>Guardar fotos en la app</button></div></div>`;
+    ${dup.length ? dupHTML(dup) : ""}
+    <div class="row2"><button class="btn" type="button" id="pBack">Cambiar archivo o periodo</button><button class="btn primary" type="button" id="pApply">Guardar fotos en la app</button></div></div>`;
     main.onchange = (e) => {
       const t = e.target;
       if (t.dataset.falt) { confirmarBajas = false; const d = faltDec[t.dataset.falt] || (faltDec[t.dataset.falt] = { acc: "dejar", motivo: MOTIVO }); d.acc = t.value; draw2(); return; }
@@ -291,8 +296,14 @@ export function viewCargaPpt(main) {
     const bajas = (p.sitios || []).filter((id) => !(p.bajas || {})[id] && !usados.has(id) && faltDec[id]?.acc === "baja");
     if (agregar.length || bajas.length) fields.push([["sitios"], [...(p.sitios || []).filter((id) => !bajas.includes(id)), ...agregar]]);
     for (const id of bajas) fields.push([["bajas", id], { fecha: now, por: S.auth.uid, motivo: (faltDec[id].motivo || "").trim() || MOTIVO, origen: "PPT: " + fileName }]);
+    const porSid = new Map();
     for (const r of rows) {
       if (!r.sid || r.n <= 0) continue;
+      const g = porSid.get(r.sid);
+      if (g) { g.n = Math.min(MAX, g.n + r.n); g.fotos += r.cara ? r.n : r.fotos; if (r.dec === "keep") g.dec = "keep"; }
+      else porSid.set(r.sid, { sid: r.sid, n: r.n, fotos: r.cara ? r.n : r.fotos, dec: r.dec, cara: false });
+    }
+    for (const r of porSid.values()) {
       const c = cur(r.sid), cn = curN(r.sid);
       const usarPpt = !(cn > 0 && cn !== r.n && r.dec === "keep");
       const next = { ...c, ppt: true, fotosPpt: r.cara ? r.n : r.fotos, fotosOrigen: fileName, actualizadoPor: S.auth.uid, actualizado: now };
