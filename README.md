@@ -91,7 +91,7 @@ js/config.js          configuración de Firebase y dominio  ← editar al instal
 js/main.js            inicio de sesión, menú y rutas
 js/views.js           Control, Avance, Campañas, Inventario, Usuarios
 js/cargas.js          cargas de campaña e inventario, revisión, aprobación, historial
-js/carga-ppt.js       carga de la PPT de comprobación (cuenta fotos por ubicación)
+js/carga-ppt.js       carga de la PPT de comprobación (cuenta fotos por ubicación; lee el recuadro de estatus de Testigos)
 js/ppt.js             lectura del .pptx y búsqueda de cada diapositiva en el periodo
 js/excel.js           lectura de Excel, normalización y búsqueda de coincidencias
 js/backend-firebase.js / js/backend-demo.js   acceso a datos
@@ -105,3 +105,11 @@ firestore.rules       reglas de seguridad (pegar en la consola de Firebase)
 - `periodos/{C01-P|D|U}`: campaña, periodo, fechas (texto), inicio y fin (solo si se pusieron a mano con calendario), `sitios[]`, `refs[]` (hasta 2 links de Drive con el arte de referencia), `bajas.{ID}` (motivo, fecha, sustituido por), `estado.{ID}` → estatus, fotos, drive, ppt, link, comentarios, verificó, fecha.
 - `cargas/{id}`: archivo subido, decisiones de revisión, estatus (pendiente, aprobada, rechazada, cancelada), quién subió y quién revisó.
 - `config/setup`: marca que ya existe el primer administrador.
+
+## Recuadro de estatus de la app de Testigos
+
+Las PPT que genera la app de Testigos (beeyondmedia/BEEYOND-TESTIGOS) pueden traer, en el lugar de una foto, un recuadro llamado `BT-ESTATUS` con el estatus del reporte de monitoreo (1er renglón: CON OBSERVACIONES, EN REVISIÓN o PENDIENTE) y el comentario (2º renglón). Al cargar la PPT:
+
+- **Con observaciones / En revisión:** se marcan las fotos como siempre, pero el soporte toma ese estatus (no Comprobado) y el comentario se agrega a *Comentarios* sin repetir lo que ya había.
+- **Pendiente:** diapositiva sin fotos; el soporte sigue pendiente y no se toca.
+- Sin recuadro: igual que antes.

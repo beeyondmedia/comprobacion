@@ -9,6 +9,10 @@ function xfrm(block) {
   if (!off || !ext) return null;
   return { x: +attr(off[0], "x"), y: +attr(off[0], "y"), cx: +attr(ext[0], "cx"), cy: +attr(ext[0], "cy") };
 }
+// Estatus escritos en el recuadro de Testigos -> estatus de la app.
+const ESTATUS_TXT = [[/^CON OBSERVACI[OÓ]N(ES)?$/i, "Con observaciones"], [/^EN REVISI[OÓ]N$/i, "En revisión"], [/^PENDIENTE$/i, "Pendiente"]];
+const PRIORIDAD = { "Pendiente": 1, "En revisión": 2, "Con observaciones": 3 };
+export function estatusDe(t) { const x = String(t || "").trim(); const f = ESTATUS_TXT.find(([re]) => re.test(x)); return f ? f[1] : ""; }
 const IGNORAR_TXT = /^(CAMPA[NÑ]A|COMPROBACI[OÓ]N|REPORTE|MERCADO LIBRE|PREVIA|DURANTE)\b/i;
 
 export async function readPptx(file) {
@@ -38,13 +42,23 @@ export async function parsePptx(zip) {
       const b = m[0], g = xfrm(b), rid = attr(b.match(/<a:blip\b[^>]*>/)?.[0] || "", "r:embed");
       if (g) pics.push({ ...g, media: rels.get(rid) || "" });
     }
+    let estatusPpt = "", comentarioPpt = "";
     for (const m of xml.matchAll(/<p:sp>[\s\S]*?<\/p:sp>/g)) {
       const b = m[0], g = xfrm(b);
-      const t = [...b.matchAll(/<a:p>([\s\S]*?)<\/a:p>/g)].map((p) => [...p[1].matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((x) => unxml(x[1])).join(""))
-        .map((s) => s.trim()).filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+      const paras = [...b.matchAll(/<a:p>([\s\S]*?)<\/a:p>/g)].map((p) => [...p[1].matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((x) => unxml(x[1])).join(""))
+        .map((s) => s.replace(/\s+/g, " ").trim()).filter(Boolean);
+      // Recuadro de estatus que pone la app de Testigos ("BT-ESTATUS"): 1er párrafo = estatus, el resto = comentario.
+      const est = estatusDe(paras[0]);
+      if (est && (/\bname="BT-ESTATUS"/.test(b) || paras.length <= 3)) {
+        if (!estatusPpt || PRIORIDAD[est] > PRIORIDAD[estatusPpt]) estatusPpt = est;
+        const c = paras.slice(1).join(" ").trim();
+        if (c && est !== "Pendiente") comentarioPpt = comentarioPpt ? comentarioPpt + " · " + c : c;
+        continue;
+      }
+      const t = paras.join(" ").replace(/\s+/g, " ").trim();
       if (t && g) textos.push({ ...g, t });
     }
-    slides.push({ n: i + 1, pics, textos });
+    slides.push({ n: i + 1, pics, textos, estatusPpt, comentarioPpt });
   }
   // Imágenes que se repiten en el mismo lugar en la mayoría de las diapositivas = plantilla (logos, fondos)
   const sig = (p) => [Math.round(p.x / 2e4), Math.round(p.y / 2e4), Math.round(p.cx / 2e4), Math.round(p.cy / 2e4), /\.jpe?g$/i.test(p.media) ? "j" : "o"].join(",");
@@ -70,7 +84,7 @@ export async function parsePptx(zip) {
     const pick = izq.filter((t) => NUM.test(t.t)).sort(byLen)[0] || cand.filter((t) => NUM.test(t.t)).sort(byLen)[0]
       || izq.filter((t) => t.y + t.cy / 2 > H * 0.3).sort(byLen)[0] || izq.sort(byLen)[0] || cand.sort(byLen)[0];
     const texto = pick ? pick.t : "";
-    return { n: s.n, texto, fotos: fotos.length };
+    return { n: s.n, texto, fotos: fotos.length, estatusPpt: s.estatusPpt, comentarioPpt: s.comentarioPpt };
   });
 }
 

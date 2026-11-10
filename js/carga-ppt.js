@@ -14,6 +14,8 @@ const loadJsZip = () => jszipP || (jszipP = new Promise((ok, ko) => {
 const MAX = 5;
 const steps = (list, on) => `<div class="steps">${list.map((s, i) => `<span class="${i === on ? "on" : ""}">${i + 1}. ${s}</span>`).join("")}</div>`;
 const STEPS = ["Periodo y archivo", "Revisión", "Listo"];
+const ST_PILL = { "Con observaciones": "p-Con-observaciones", "En revisión": "p-En-revisión", "Pendiente": "p-Pendiente" };
+const ST_RANK = { "Pendiente": 1, "En revisión": 2, "Con observaciones": 3 };
 const ESPACIOS = ["CALLE", "CENTRO COMERCIAL", "AEROPUERTO"];
 const VENUES = ["PARABUS", "KIOSCO", "BIOBOX", "MEGA VALLA", "CARTELERA DIGITAL", "LANDMARK", "ARCO DIGITAL", "MUPI", "TOTEM", "PANTALLA", "VIDEO WALL", "PUENTE"];
 // "68. Parabus CERVANTES SAAVEDRA" -> { sop: "PARABUS", ub: "CERVANTES SAAVEDRA" }
@@ -39,7 +41,7 @@ export function viewCargaPpt(main) {
     r.n = Math.min(MAX, each + extra);
     rows.filter((x) => x.cara === r.uid).forEach((x) => (x.n = Math.min(MAX, each)));
     return { uid: ++uidN, cara: r.uid, n_slide: r.n_slide, texto: r.texto, fotos: 0, id: sid, sid, seguro: false, auto,
-      opciones: r.opciones.filter((x) => x !== r.sid), scores: [], n: Math.min(MAX, each), dec: "ppt" };
+      opciones: r.opciones.filter((x) => x !== r.sid), scores: [], n: Math.min(MAX, each), dec: "ppt", estatusPpt: r.estatusPpt, comentarioPpt: r.comentarioPpt };
   };
   loadJsZip().catch(() => {});
 
@@ -53,7 +55,7 @@ export function viewCargaPpt(main) {
       <label class="field"><span>Periodo</span><select id="pPer"></select></label></div>
       <div class="note" id="pInfo">Solo se buscan las ubicaciones de ese periodo.</div></div>
     <div class="drop" id="pdrop"><b>Sube la presentación de comprobación (.pptx)</b><span class="note">Arrastra el archivo aquí o</span><label class="btn primary">Elegir archivo<input type="file" id="pdrop-in" accept=".pptx" hidden></label><div id="pmsg" class="note" hidden></div></div>
-    <div class="panel note">La app lee cada diapositiva: toma el nombre de la ubicación del cuadro de texto de la izquierda y cuenta las fotos de la campaña (las imágenes grandes); fondos, logos, íconos y mapas no cuentan. Antes de guardar te muestra lo que encontró para que lo revises. Se marcan Foto 1…N (máximo 5), "En PPT: Sí" y "En Drive: Sí", y el soporte queda como Comprobado (✔); los que están "Con observaciones" conservan ese estatus.</div></div>`;
+    <div class="panel note">La app lee cada diapositiva: toma el nombre de la ubicación del cuadro de texto de la izquierda y cuenta las fotos de la campaña (las imágenes grandes); fondos, logos, íconos y mapas no cuentan. Antes de guardar te muestra lo que encontró para que lo revises. Se marcan Foto 1…N (máximo 5), "En PPT: Sí" y "En Drive: Sí", y el soporte queda como Comprobado (✔); los que están "Con observaciones" conservan ese estatus. Si la diapositiva trae el recuadro de estatus de la app de Testigos (Con observaciones, En revisión o Pendiente), se usa ese estatus y su texto se agrega a Comentarios.</div></div>`;
     const fillPer = () => {
       const lst = pers.filter((p) => p.campana === camp);
       if (!lst.some((p) => p.id === pid)) pid = lst.length === 1 ? lst[0].id : "";
@@ -128,6 +130,7 @@ export function viewCargaPpt(main) {
     return `<tr data-i="${i}"${r.cara ? ' class="pcara"' : ""}>
       <td class="num">${r.cara ? "↳" : r.n_slide}</td>
       <td>${r.cara ? `<div class="note">Misma diapositiva ${r.n_slide}</div>` : `<div>${esc(textoUbicacion(r.texto) || "(sin texto)")}</div>`}<div style="margin-top:4px">${estado}</div>
+        ${r.estatusPpt && !r.cara ? `<div style="margin-top:4px"><span class="pill ${ST_PILL[r.estatusPpt]}">Recuadro: ${esc(r.estatusPpt)}</span>${r.comentarioPpt ? ` <span class="note">${esc(r.comentarioPpt)}</span>` : ""}</div>` : ""}
         ${r.cara ? `<button class="btn small" type="button" data-quitar-cara="${i}" style="margin-top:4px">Quitar esta cara</button>`
           : r.sid ? `<button class="btn small" type="button" data-cara="${i}" style="margin-top:4px">+ ${caras ? "Otra cara más" : "Tiene otra cara"}</button>` : ""}</td>
       <td><select class="pSite" data-i="${i}" aria-label="Soporte de la diapositiva ${r.n_slide}"><option value="">— No aplicar —</option>
@@ -142,7 +145,7 @@ export function viewCargaPpt(main) {
         ${r.cara ? "" : caras ? `<div class="note">la diapositiva trae ${r.fotos}</div>` : r.fotos > MAX ? `<div style="margin-top:4px"><span class="pill p-dudoso">trae ${r.fotos}, se marcan ${MAX}</span></div>` : r.fotos === 0 ? `<div class="note">sin fotos</div>` : ""}</td>
       <td>${r.sid ? `${cn} foto${cn === 1 ? "" : "s"} · PPT ${c.ppt ? "Sí" : "No"}` : "—"}</td>
       <td>${dif ? `<select class="pDec" data-i="${i}" aria-label="Qué hacer"><option value="ppt"${r.dec === "ppt" ? " selected" : ""}>Usar la PPT (${r.n})</option><option value="keep"${r.dec === "keep" ? " selected" : ""}>Conservar lo marcado (${cn})</option></select>`
-        : r.sid && r.n > 0 ? (cn === r.n ? `<span class="note">Igual (${r.n})</span>` : `Marcar ${r.n}`) : `<span class="note">No se aplica</span>`}</td></tr>
+        : r.sid && r.n > 0 ? (cn === r.n ? `<span class="note">Igual (${r.n})</span>` : `Marcar ${r.n}`) : r.sid && r.estatusPpt ? `Estatus: ${esc(r.estatusPpt)}` : `<span class="note">No se aplica</span>`}${r.sid && r.estatusPpt && r.estatusPpt !== "Pendiente" && r.n > 0 ? `<div class="note">y estatus ${esc(r.estatusPpt)}</div>` : ""}</td></tr>
       ${r.buscar ? `<tr class="psub"><td></td><td colspan="5">${buscarHTML(r, i)}</td></tr>` : ""}`;
   }
   function resultados(q) {
@@ -276,6 +279,12 @@ export function viewCargaPpt(main) {
   }
 
   let confirmarBajas = false;
+  // Agrega comentarios nuevos sin repetir los que ya estaban.
+  const juntar = (prev, nuevos) => {
+    let out = String(prev || "").trim();
+    for (const c of nuevos) if (c && !out.toLowerCase().includes(c.toLowerCase())) out = out ? out + "\n" + c : c;
+    return out;
+  };
   async function apply() {
     const p = per(), fields = [], now = nowIso(), ops = [];
     let n = 0, keep = 0, nOk = 0, nObs = 0;
@@ -298,30 +307,45 @@ export function viewCargaPpt(main) {
     for (const id of bajas) fields.push([["bajas", id], { fecha: now, por: S.auth.uid, motivo: (faltDec[id].motivo || "").trim() || MOTIVO, origen: "PPT: " + fileName }]);
     const porSid = new Map();
     for (const r of rows) {
-      if (!r.sid || r.n <= 0) continue;
+      if (!r.sid || (r.n <= 0 && !r.estatusPpt)) continue;
       const g = porSid.get(r.sid);
-      if (g) { g.n = Math.min(MAX, g.n + r.n); g.fotos += r.cara ? r.n : r.fotos; if (r.dec === "keep") g.dec = "keep"; }
-      else porSid.set(r.sid, { sid: r.sid, n: r.n, fotos: r.cara ? r.n : r.fotos, dec: r.dec, cara: false });
+      if (g) {
+        g.n = Math.min(MAX, g.n + r.n); g.fotos += r.cara ? r.n : r.fotos; if (r.dec === "keep") g.dec = "keep";
+        if (r.estatusPpt && (ST_RANK[r.estatusPpt] || 0) > (ST_RANK[g.est] || 0)) g.est = r.estatusPpt;
+        if (r.comentarioPpt && !g.coms.includes(r.comentarioPpt)) g.coms.push(r.comentarioPpt);
+      }
+      else porSid.set(r.sid, { sid: r.sid, n: r.n, fotos: r.cara ? r.n : r.fotos, dec: r.dec, cara: false, est: r.estatusPpt || "", coms: r.comentarioPpt ? [r.comentarioPpt] : [] });
     }
+    let nEstPpt = 0, nSolo = 0;
     for (const r of porSid.values()) {
       const c = cur(r.sid), cn = curN(r.sid);
+      // Diapositiva sin fotos con recuadro "Pendiente": no marca fotos; solo deja Pendiente si aún no tiene estatus.
+      if (r.n <= 0) {
+        if (r.est === "Pendiente") continue;   // sin fotos: sigue pendiente, no se toca
+        const next = { ...c, estatus: r.est, actualizadoPor: S.auth.uid, actualizado: now, comentarios: juntar(c.comentarios, r.coms) };
+        fields.push([["estado", r.sid], next]); nEstPpt++; nSolo++;
+        continue;
+      }
       const usarPpt = !(cn > 0 && cn !== r.n && r.dec === "keep");
       const next = { ...c, ppt: true, fotosPpt: r.cara ? r.n : r.fotos, fotosOrigen: fileName, actualizadoPor: S.auth.uid, actualizado: now };
       if (usarPpt) { next.fotosSel = [1, 2, 3, 4, 5].map((x) => x <= r.n); next.fotos = r.n; n++; } else keep++;
       // si está en la PPT también está en Drive: queda comprobado (salvo que tenga observaciones)
       next.drive = true;
-      if (next.estatus !== "Con observaciones") { if (next.estatus !== "Comprobado") { next.verificadoPor = S.auth.uid; next.fechaVerif = now; nOk++; } next.estatus = "Comprobado"; } else nObs++;
+      if (r.est === "Con observaciones" || r.est === "En revisión") {
+        // El recuadro de Testigos manda: estatus del reporte de monitoreo y su comentario.
+        next.estatus = r.est; next.comentarios = juntar(c.comentarios, r.coms); nEstPpt++;
+      } else if (next.estatus !== "Con observaciones") { if (next.estatus !== "Comprobado") { next.verificadoPor = S.auth.uid; next.fechaVerif = now; nOk++; } next.estatus = "Comprobado"; } else nObs++;
       fields.push([["estado", r.sid], next]);
     }
     if (!fields.length) { toast("No hay fotos, soportes para agregar ni bajas que guardar."); return; }
     if (bajas.length && !confirmarBajas) { confirmarBajas = true; $("#pApply").textContent = `Confirmar: guardar y dar de baja ${bajas.length}`; toast(`Vas a dar de baja ${bajas.length} ubicaci${bajas.length === 1 ? "ón" : "ones"} del plan. Presiona otra vez para confirmar.`); return; }
     $("#pApply").disabled = true;
-    const nEst = fields.filter((f) => f[0][0] === "estado").length;
+    const nEst = fields.filter((f) => f[0][0] === "estado").length - nSolo;
     try {
       await S.be.batch([...ops, { op: "update", path: "periodos/" + p.id, fields }]);
       main.onchange = null; main.oninput = null; main.onclick = null;
       main.innerHTML = `<div class="pagehead"><h1>PPT de comprobación</h1></div>${steps(STEPS, 2)}
-      <div class="stack"><div class="msg ok">Listo: ${esc(perLabel(p))}. Se marcaron fotos en ${n} soportes${keep ? ` y ${keep} conservaron lo que ya estaba marcado` : ""}; ${nEst === 1 ? "quedó" : "quedaron"} con "En PPT: Sí" y "En Drive: Sí". ${nOk === 1 ? "1 soporte quedó" : nOk + " soportes quedaron"} como Comprobado ✔${nObs ? ` (${nObs} con observaciones conservan ese estatus)` : ""}.${agregar.length ? ` ${agregar.length === 1 ? "Se agregó 1 soporte" : `Se agregaron ${agregar.length} soportes`} al periodo` + (altas.length ? `; ${altas.length === 1 ? "1 se dio" : altas.length + " se dieron"} de alta en el inventario (${altas.map(esc).join(", ")})` : "") + "." : ""}${bajas.length ? ` ${bajas.length === 1 ? "Se dio de baja 1 ubicación" : `Se dieron de baja ${bajas.length} ubicaciones`} del plan.` : ""}</div>
+      <div class="stack"><div class="msg ok">Listo: ${esc(perLabel(p))}. Se marcaron fotos en ${n} soportes${keep ? ` y ${keep} conservaron lo que ya estaba marcado` : ""}; ${nEst === 1 ? "quedó" : "quedaron"} con "En PPT: Sí" y "En Drive: Sí". ${nOk === 1 ? "1 soporte quedó" : nOk + " soportes quedaron"} como Comprobado ✔${nObs ? ` (${nObs} con observaciones conservan ese estatus)` : ""}.${nEstPpt ? ` ${nEstPpt === 1 ? "1 soporte tomó" : nEstPpt + " soportes tomaron"} el estatus del recuadro de la PPT (Con observaciones / En revisión) y su texto se agregó a Comentarios.` : ""}${agregar.length ? ` ${agregar.length === 1 ? "Se agregó 1 soporte" : `Se agregaron ${agregar.length} soportes`} al periodo` + (altas.length ? `; ${altas.length === 1 ? "1 se dio" : altas.length + " se dieron"} de alta en el inventario (${altas.map(esc).join(", ")})` : "") + "." : ""}${bajas.length ? ` ${bajas.length === 1 ? "Se dio de baja 1 ubicación" : `Se dieron de baja ${bajas.length} ubicaciones`} del plan.` : ""}</div>
       <div class="row2"><a class="btn primary" href="#control" id="pGo">Ver en Control</a><button class="btn" type="button" id="pOtra">Cargar otra PPT</button></div></div>`;
       $("#pGo").onclick = () => { S.F.camp = p.campana; S.F.per = p.periodo; S.F.st = ""; S.F.q = ""; try { localStorage.setItem("bym-filtros", JSON.stringify(S.F)); } catch (e) {} };
       $("#pOtra").onclick = () => { rows = []; step1(); };
