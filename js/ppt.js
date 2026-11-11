@@ -31,6 +31,22 @@ export async function parsePptx(zip) {
   const relMap = new Map([...presRels.matchAll(/<Relationship\b[^>]*>/g)].map((m) => [attr(m[0], "Id"), attr(m[0], "Target")]));
   const order = [...pres.matchAll(/<p:sldId\b[^>]*>/g)].map((m) => relMap.get(attr(m[0], "r:id"))).filter(Boolean)
     .map((t) => "ppt/" + t.replace(/^\/?ppt\//, "").replace(/^\.\//, ""));
+  // Posiciones de los marcadores de cada diseño (slideLayout), por idx.
+  const layoutCache = new Map();
+  const layoutBoxes = async (rels) => {
+    const target = [...rels.values()].find((t) => /slideLayouts\/slideLayout\d+\.xml$/.test(t));
+    if (!target) return {};
+    const path = "ppt/slideLayouts/" + target.split("/").pop();
+    if (!layoutCache.has(path)) {
+      const lx = await txt(path), boxes = {};
+      for (const m of lx.matchAll(/<p:(sp|pic)>[\s\S]*?<\/p:\1>/g)) {
+        const ph = m[0].match(/<p:ph\b[^>]*>/)?.[0], g = xfrm(m[0]);
+        if (ph && g) boxes[attr(ph, "idx") || "0"] = g;
+      }
+      layoutCache.set(path, boxes);
+    }
+    return layoutCache.get(path);
+  };
   const slides = [];
   for (const [i, path] of order.entries()) {
     const xml = await txt(path);
@@ -39,7 +55,11 @@ export async function parsePptx(zip) {
     const rels = new Map([...relsXml.matchAll(/<Relationship\b[^>]*>/g)].map((m) => [attr(m[0], "Id"), attr(m[0], "Target") || ""]));
     const pics = [], textos = [];
     for (const m of xml.matchAll(/<p:pic>[\s\S]*?<\/p:pic>/g)) {
-      const b = m[0], g = xfrm(b), rid = attr(b.match(/<a:blip\b[^>]*>/)?.[0] || "", "r:embed");
+      const b = m[0], rid = attr(b.match(/<a:blip\b[^>]*>/)?.[0] || "", "r:embed");
+      // Foto insertada en un marcador de imagen: si no trae posición propia, se toma la del diseño.
+      let g = xfrm(b);
+      const ph = b.match(/<p:ph\b[^>]*>/)?.[0];
+      if (!g && ph) g = (await layoutBoxes(rels))[attr(ph, "idx") || "0"] || null;
       if (g) pics.push({ ...g, media: rels.get(rid) || "" });
     }
     let estatusPpt = "", comentarioPpt = "";
