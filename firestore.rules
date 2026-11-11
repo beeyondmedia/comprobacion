@@ -6,7 +6,7 @@ rules_version = '2';
 //   verificador : + marca comprobaciones y arte de referencia, agrega soportes a un periodo y da de alta soportes desde la PPT, y sube cargas
 //   aprobador   : + aprueba cargas, escribe inventario, campañas y periodos
 //   admin       : + administra usuarios
-// Sin borrados físicos de datos de operación. Todo lo no declarado se niega.
+// Solo el admin puede borrar campañas (con sus periodos); nada más se borra físicamente. Todo lo no declarado se niega.
 // =====================================================================
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -56,7 +56,7 @@ service cloud.firestore {
     match /campanas/{id} {
       allow read: if active();
       allow create, update: if atLeast('aprobador');
-      allow delete: if false;
+      allow delete: if atLeast('admin');   // eliminar campaña (cancelada o duplicada)
     }
     match /periodos/{id} {
       allow read: if active();
@@ -68,7 +68,7 @@ service cloud.firestore {
              .difference(request.resource.data.get('bajas', {}).keys().toSet()).size() == 0
         && request.resource.data.get('bajas', {}).diff(resource.data.get('bajas', {})).removedKeys().size() == 0
         && request.resource.data.get('bajas', {}).diff(resource.data.get('bajas', {})).changedKeys().size() == 0);
-      allow delete: if false;
+      allow delete: if atLeast('admin');   // se borran junto con su campaña
     }
 
     // ---------- cargas (historial)

@@ -14,7 +14,7 @@ App web interna para controlar la comprobación fotográfica de los soportes de 
 | Consulta | Ver control, avance, campañas e inventario; exportar a Excel |
 | Verificador | Lo anterior + marcar comprobaciones (fotos, Drive, PPT, estatus, ✔), agregar el arte de referencia de cada periodo (links de Drive), cargar la PPT de comprobación (incluido agregar soportes al periodo, darlos de alta o dar de baja del plan los que no salen) y subir Excels de campañas o inventario para aprobación |
 | Aprobador | Lo anterior + aprobar o rechazar cargas **de otras personas**, editar, duplicar y archivar campañas |
-| Administrador | Todo + dar de alta usuarios, cambiar roles y desactivar usuarios. Puede aprobar sus propias cargas |
+| Administrador | Todo + dar de alta usuarios, cambiar roles y desactivar usuarios, **eliminar campañas**. Puede aprobar sus propias cargas |
 
 ## Instalación (una sola vez)
 
@@ -73,6 +73,8 @@ Los archivos de la carga inicial **no van en el repositorio** (es público). Sú
 **Duplicar campaña** (Aprobador y Administrador, en Campañas): crea una campaña nueva con los mismos periodos y soportes activos (sin los dados de baja). Eliges nombre, cliente, versión, qué periodos copiar y sus fechas. Fotos, checks y arte empiezan en cero; después se ajusta cada periodo con "Editar soportes".
 
 **Filtro de fechas** (Avance y Control, también aplica al Excel exportado): eliges *desde* y *hasta* en el calendario y salen los periodos vigentes en algún día de ese rango. Las fechas se leen del texto de cada periodo ("2 al 12 nov 2026", "17 de septiembre al 31 de octubre"…); si el texto no tiene año se toma el del alta del periodo. Los periodos cuyo texto no se entiende aparecen aparte en "Sin fechas reconocibles"; en Campañas › Editar se les pone inicio y fin con calendario.
+
+**Eliminar campaña** (solo Administrador, en Campañas): para una campaña cancelada o que se subió duplicada. Pide confirmar y borra la campaña con sus periodos y comprobaciones; no se puede deshacer. El inventario y el historial de cargas no se tocan. Si solo quieres ocultarla, usa Archivar.
 
 **Versión:** campo libre de cada campaña (por ejemplo "V2 · 10 nov"), se escribe en Editar o al duplicar. Se ve junto al nombre y sale en el Excel exportado.
 

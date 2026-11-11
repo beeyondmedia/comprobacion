@@ -273,7 +273,7 @@ export function viewCampanas(main) {
     <div class="stack">${camps.map((c) => {
       const pers = S.periodos.filter((p) => p.campanaId === c.id).sort((a, b) => (a.orden || "").localeCompare(b.orden || ""));
       return `<div class="panel"><div class="row" style="justify-content:space-between;align-items:center"><div><h3 style="margin:0">${esc(c.nombre)} ${c.version ? `<span class="pill p-Pendiente" title="Versión">${esc(c.version)}</span>` : ""} ${c.activo === false ? `<span class="pill p-cancelada">Archivada</span>` : ""}</h3><span class="note">${esc(c.cliente || "")} · <span class="mono">${esc(c.id)}</span> · creada ${fecha(c.creado)}</span></div>
-        ${ap ? `<div class="row"><button class="btn small" type="button" data-camp-edit="${esc(c.id)}">Editar</button><button class="btn small" type="button" data-camp-dup="${esc(c.id)}">Duplicar</button><button class="btn small" type="button" data-camp-act="${esc(c.id)}">${c.activo === false ? "Reactivar" : "Archivar"}</button></div>` : ""}</div>
+        ${ap ? `<div class="row"><button class="btn small" type="button" data-camp-edit="${esc(c.id)}">Editar</button><button class="btn small" type="button" data-camp-dup="${esc(c.id)}">Duplicar</button>${can("admin") ? `<button class="btn small danger" type="button" data-camp-del="${esc(c.id)}">Eliminar</button>` : ""}<button class="btn small" type="button" data-camp-act="${esc(c.id)}">${c.activo === false ? "Reactivar" : "Archivar"}</button></div>` : ""}</div>
         <div class="tablebox" style="margin-top:10px"><table><thead><tr><th>Periodo</th><th>Fechas</th><th>Soportes</th><th>Comprobados</th><th style="min-width:160px">Avance</th><th>Arte</th>${ap ? "<th></th>" : ""}</tr></thead><tbody>
         ${pers.map((p) => { const k = counts(all.filter((r) => r.p.id === p.id)); return `<tr><td><b>${esc(p.periodo)}</b> <span class="mono">${esc(p.id)}</span> ${p.activo === false ? `<span class="pill p-cancelada">Archivado</span>` : ""}</td><td>${esc(p.fechas || "")}</td><td class="num">${k.total}</td><td class="num">${k.Comprobado}</td><td>${stackBar(k)}<span class="note">${pct(k.pct)}</span></td><td><div class="row" style="flex-wrap:nowrap">${(p.refs || []).length ? `<button class="btn small" type="button" data-ref-view="${esc(p.id)}">Ver (${(p.refs || []).length})</button>` : `<span class="note">Sin arte</span>`}${can("verificador") ? `<button class="btn small" type="button" data-ref-edit="${esc(p.id)}">${(p.refs || []).length ? "Cambiar" : "Agregar"}</button>` : ""}</div></td>${ap ? `<td><div class="row" style="flex-wrap:nowrap"><button class="btn small primary" type="button" data-per-edit="${esc(p.id)}">Editar soportes</button><button class="btn small" type="button" data-per-act="${esc(p.id)}">${p.activo === false ? "Reactivar" : "Archivar"}</button></div></td>` : ""}</tr>`; }).join("")}
         </tbody></table></div></div>`;
@@ -282,6 +282,7 @@ export function viewCampanas(main) {
       const rf = e.target.closest("[data-ref-edit],[data-ref-view]");
       if (rf) { if (rf.dataset.refEdit) openRefsEditor(rf.dataset.refEdit); else openRefsViewer(rf.dataset.refView); return; }
       const du = e.target.closest("[data-camp-dup]"); if (du) { openCampaignDuplicate(du.dataset.campDup); return; }
+      const dl = e.target.closest("[data-camp-del]"); if (dl) { openCampaignDelete(dl.dataset.campDel); return; }
       const ed = e.target.closest("[data-per-edit],[data-camp-edit]");
       if (ed) { if (ed.dataset.perEdit) openPeriodEditor(ed.dataset.perEdit); else openCampaignEditor(ed.dataset.campEdit); return; }
       const b = e.target.closest("[data-camp-act],[data-per-act]"); if (!b) return;
@@ -388,6 +389,30 @@ export function openCampaignEditor(cid) {
       ops.push({ op: "update", path: "periodos/" + p.id, fields: [[["campana"], nombre], [["fechas"], txt], [["inicio"], mano ? ini : ""], [["fin"], mano ? fin : ""]] });
     }
     try { await S.be.batch(ops); toast("Campaña actualizada"); closeDrawer(); } catch (e) { toast("No se pudo guardar"); }
+  };
+}
+
+// Eliminar (solo admin): borra la campaña y sus periodos con sus comprobaciones. No se puede deshacer.
+export function openCampaignDelete(cid) {
+  const c = S.campanas.find((x) => x.id === cid); if (!c || !can("admin")) return;
+  const pers = S.periodos.filter((p) => p.campanaId === cid);
+  const nSop = pers.reduce((a, p) => a + (p.sitios || []).length, 0);
+  const nCom = pers.reduce((a, p) => a + Object.keys(p.estado || {}).length, 0);
+  const dr = $("#drawer");
+  dr.innerHTML = `<header><div style="flex:1"><div class="mono">${esc(cid)}</div><h2>¿Seguro que quieres eliminar esta campaña?</h2></div><button class="btn" type="button" id="cxClose">Cancelar</button></header>
+  <div class="body"><p><b>${esc(c.nombre)}</b>${c.version ? " · " + esc(c.version) : ""}</p>
+  <div class="msg err">Se borran ${pers.length} periodo${pers.length === 1 ? "" : "s"} (${pers.map((p) => esc(p.periodo)).join(", ") || "ninguno"}), ${nSop} soportes asignados y ${nCom} registro${nCom === 1 ? "" : "s"} de comprobación. <b>No se puede deshacer.</b></div>
+  <div class="note">El inventario y el historial de cargas no se tocan. Si solo quieres que deje de verse en Control y Avance, usa Archivar.</div></div>
+  <footer><button class="btn" type="button" id="cxNo">Cancelar</button><button class="btn danger" type="button" id="cxYes">Sí, eliminar</button></footer>`;
+  dr.hidden = false; $("#scrim").hidden = false;
+  $("#cxClose").onclick = $("#cxNo").onclick = closeDrawer;
+  $("#cxYes").onclick = async () => {
+    $("#cxYes").disabled = true;
+    try {
+      await S.be.batch([...pers.map((p) => ({ op: "delete", path: "periodos/" + p.id })), { op: "delete", path: "campanas/" + cid }]);
+      if (S.F.camp === c.nombre) { S.F.camp = ""; S.F.per = ""; saveF(); }
+      toast(`Campaña "${c.nombre}" eliminada`); closeDrawer();
+    } catch (e) { console.error(e); $("#cxYes").disabled = false; toast("No se pudo eliminar. Revisa que las reglas de Firebase estén actualizadas."); }
   };
 }
 
