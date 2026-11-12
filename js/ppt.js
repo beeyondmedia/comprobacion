@@ -60,6 +60,8 @@ export async function parsePptx(zip) {
       let g = xfrm(b);
       const ph = b.match(/<p:ph\b[^>]*>/)?.[0];
       if (!g && ph) g = (await layoutBoxes(rels))[attr(ph, "idx") || "0"] || null;
+      // Marcador de imagen sin posición conocida: es una foto (lado derecho, tamaño de foto).
+      if (!g && ph && rid) g = { x: Math.round(W * 0.5), y: 0, cx: Math.round(W * 0.3), cy: Math.round(H * 0.4) };
       if (g) pics.push({ ...g, media: rels.get(rid) || "" });
     }
     let estatusPpt = "", comentarioPpt = "";
