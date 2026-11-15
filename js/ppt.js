@@ -150,13 +150,20 @@ export function matchSlides(slides, sitios /* [[id, s]] */) {
   pairs.sort((a, b) => b.sc - a.sc);
   const bySlide = new Map(), usado = new Set();
   for (const p of pairs) if (!bySlide.has(p.i) && !usado.has(p.id)) { bySlide.set(p.i, p); usado.add(p.id); }
-  return slides.map((sl, i) => {
+  const out = slides.map((sl, i) => {
     const mine = pairs.filter((p) => p.i === i);
     const m = bySlide.get(i);
     const otro = mine.find((p) => p.id !== m?.id);
     const seguro = !!m && m.sc >= 0.85 && (!otro || m.sc - otro.sc >= 0.12);
     return { ...sl, id: m?.id || "", score: m?.sc || 0, seguro, opciones: mine.slice(0, 5).map((p) => p.id), scores: mine.slice(0, 5).map((p) => p.sc) };
   });
+  // Continuación: diapositiva seguida con el mismo texto que la anterior (la app de Testigos pone las fotos
+  // que no caben en otra diapositiva igual) = mismo soporte; al guardar se suman sus fotos.
+  for (let i = 1; i < out.length; i++) {
+    const a = out[i - 1], b = out[i];
+    if (!b.id && a.id && b.texto && b.texto === a.texto) Object.assign(b, { id: a.id, score: a.score, seguro: a.seguro, opciones: a.opciones, scores: a.scores, continuacion: true });
+  }
+  return out;
 }
 
 // ¿Dos soportes son caras de la misma ubicación? (mismo nombre quitando I/II, NORTE-SUR, IZQ/DER…)

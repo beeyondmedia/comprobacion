@@ -116,14 +116,19 @@ export function viewCargaPpt(main) {
   const per = () => S.periodos.find((p) => p.id === pid);
   const cur = (sid) => (per()?.estado || {})[sid] || {};
   const curN = (sid) => fotosSel(cur(sid)).filter(Boolean).length;
+  // Diapositivas seguidas con el mismo texto = la misma ubicación continuada (la app de Testigos
+  // pone más fotos en otra diapositiva igual). No es un repetido: sus fotos se suman.
+  const esContinuacion = (a, b) => !a.cara && !b.cara && a.texto && a.texto === b.texto && Math.abs(a.n_slide - b.n_slide) === 1;
 
   function rowHTML(r, i) {
     const p = per(), ids = (p.sitios || []).filter((id) => !(p.bajas || {})[id]);
     const resto = ids.filter((id) => !r.opciones.includes(id)).sort((a, b) => label(a).localeCompare(label(b)));
     const caras = rows.filter((x) => x.cara === r.uid).length;
     const caraPill = !r.cara && caras && r.sid ? `<span class="pill p-Comprobado">${caras + 1} caras</span>` : r.cara ? `<span class="pill p-Pendiente">${r.auto ? "Otra cara (propuesta)" : "Otra cara"}</span> ` : "";
-    const otras = r.sid ? rows.filter((x) => x !== r && x.sid === r.sid).map((x) => x.n_slide) : [];
-    const repPill = otras.length ? `<span class="pill p-dudoso">Repetido: también en diap. ${[...new Set(otras)].join(", ")}</span> ` : "";
+    const otras = r.sid ? rows.filter((x) => x !== r && x.sid === r.sid && !esContinuacion(x, r)).map((x) => x.n_slide) : [];
+    const cont = r.sid && !r.cara && rows.some((x) => x !== r && !x.cara && x.sid === r.sid && esContinuacion(x, r));
+    const repPill = (otras.length ? `<span class="pill p-dudoso">Repetido: también en diap. ${[...new Set(otras)].join(", ")}</span> ` : "")
+      + (cont && rows.some((x) => !x.cara && x.sid === r.sid && x.n_slide === r.n_slide - 1 && x.texto === r.texto) ? `<span class="pill p-Pendiente">Continuación (más fotos)</span> ` : "");
     const estado = repPill + caraPill + ((r.cara || caras) && r.sid ? "" : r.fuera && r.sid === r.extra ? `<span class="pill p-dudoso">Fuera del plan: se agregará</span>` : !r.sid ? `<span class="pill p-error">${r.cara ? "Elige la otra cara" : "Sin coincidencia"}</span>` : r.sid !== r.id ? `<span class="pill p-actualizar">Elegido a mano</span>` : r.seguro ? `<span class="pill p-Comprobado">Coincide</span>` : `<span class="pill p-dudoso">Revisa</span>`);
     const c = r.sid ? cur(r.sid) : null, cn = r.sid ? curN(r.sid) : 0;
     const dif = r.sid && cn > 0 && cn !== r.n;
@@ -210,7 +215,7 @@ export function viewCargaPpt(main) {
     k.mano = sl.filter((r) => r.sid && r.sid !== r.id && !(r.fuera && r.sid === r.extra)).length; k.rev = k.total - k.ok - k.sin - k.mano - sl.filter((r) => r.fuera && r.sid === r.extra).length;
     const usados = new Set(rows.map((r) => r.sid).filter(Boolean));
     const faltan = (p.sitios || []).filter((id) => !(p.bajas || {})[id] && !usados.has(id));
-    const dup = [...usados].filter((id) => rows.filter((r) => r.sid === id).length > 1);
+    const dup = [...usados].filter((id) => { const l = rows.filter((r) => r.sid === id && !r.cara); return l.length > 1 && !l.every((r) => l.some((x) => x !== r && esContinuacion(x, r))); });
     main.innerHTML = `<div class="pagehead"><h1>PPT de comprobación</h1></div>${steps(STEPS, 1)}
     <div class="stack"><div class="panel stack"><div class="note">Archivo: <b>${esc(fileName)}</b> · Periodo: <b>${esc(perLabel(p))}</b></div>
       <div class="counts"><span class="pill p-Pendiente">${k.total} diapositivas</span><span class="pill p-Comprobado">${k.ok} coinciden</span>${k.mano ? `<span class="pill p-actualizar">${k.mano} elegidos a mano</span>` : ""}${k.fuera ? `<span class="pill p-dudoso">${k.fuera} fuera del plan (se agregan)</span>` : ""}${k.caras ? `<span class="pill p-Pendiente">${k.caras} cara${k.caras === 1 ? "" : "s"} extra</span>` : ""}${k.rev ? `<span class="pill p-dudoso">${k.rev} por revisar</span>` : ""}${k.sin ? `<span class="pill p-error">${k.sin} sin coincidencia</span>` : ""}${k.mas ? `<span class="pill p-dudoso">${k.mas} con más de ${MAX} fotos</span>` : ""}${k.dif ? `<span class="pill p-dudoso">${k.dif} distintas a lo ya marcado</span>` : ""}</div>
