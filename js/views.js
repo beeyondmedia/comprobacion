@@ -41,7 +41,7 @@ function exportControl(noStatus = false) {
   const rows = filtered(allRows(), { noStatus }).map((r) => ({
     "ID COMPROBACIÓN": r.cid, "CAMPAÑA": r.p.campana, "VERSIÓN": S.campanas.find((c) => c.id === r.p.campanaId)?.version || "", "PERIODO": r.p.periodo, "FECHAS": r.p.fechas || "", "ID SOPORTE": r.s.id,
     "TIPO DE ESPACIO": r.s.esp, "VENUE TYPE": r.s.sop, "UBICACIÓN": r.s.ub, "DETALLE / POSICIÓN": r.s.det, "CIUDAD": r.s.ciudad,
-    "MEDIA OWNER": r.s.owner, "FOTOS (0-5)": fotosSel(r.st).filter(Boolean).length, "FOTOS MARCADAS": fotosSel(r.st).map((on, i) => (on ? i + 1 : null)).filter(Boolean).join(", "), "EN DRIVE": r.st.drive ? "Sí" : "No", "EN PPT": r.st.ppt ? "Sí" : "No",
+    "MEDIA OWNER": r.s.owner, "FOTOS": fotosN(r.st), "EN DRIVE": r.st.drive ? "Sí" : "No", "EN PPT": r.st.ppt ? "Sí" : "No",
     "ESTATUS": stOf(r), "VERIFICÓ": nombreDe(r.st.verificadoPor), "FECHA VERIFICACIÓN": fecha(r.st.fechaVerif),
     "LINK DRIVE": r.st.link || "", "COMENTARIOS": r.st.comentarios || "", "LAT": r.s.lat, "LONG": r.s.lon }));
   downloadXlsx(`Comprobacion_Beeyond_${new Date().toISOString().slice(0, 10)}.xlsx`, [["Comprobaciones", rows]]);
@@ -81,13 +81,19 @@ function bindSinFechas(root) {
 }
 
 // ================================================================ CONTROL
-// Cada una de las 5 fotos se marca por separado (ángulos o vistas distintas).
-export const fotosSel = (st) => Array.isArray(st.fotosSel) && st.fotosSel.length === 5 ? st.fotosSel.map(Boolean) : [1, 2, 3, 4, 5].map((n) => n <= (st.fotos || 0));
-function toggleFoto(r, i) {
-  const sel = fotosSel(r.st); sel[i] = !sel[i];
-  const n = sel.filter(Boolean).length;
-  writeEstado(r, { fotosSel: sel, fotos: n, ...(r.st.estatus ? {} : { estatus: "En revisión" }) }, `Foto ${i + 1} ${sel[i] ? "marcada" : "desmarcada"} · ${n} de 5`);
+// Número de fotos recibidas (sin tope). Los datos anteriores guardaban 5 casillas (fotosSel):
+// si no hay número, se cuentan las casillas marcadas.
+export const fotosN = (st) => {
+  if (typeof st?.fotos === "number" && st.fotos >= 0) return Math.round(st.fotos);
+  return Array.isArray(st?.fotosSel) ? st.fotosSel.filter(Boolean).length : 0;
+};
+function setFotos(r, n) {
+  n = Math.max(0, Math.min(9999, Math.round(+n || 0)));
+  if (n === fotosN(r.st)) return;
+  // fotosSel se sigue escribiendo (hasta 5) para que las versiones anteriores de la app lo lean igual.
+  writeEstado(r, { fotos: n, fotosSel: [1, 2, 3, 4, 5].map((x) => x <= n), ...(r.st.estatus ? {} : { estatus: "En revisión" }) }, `${n === 1 ? "1 foto" : n + " fotos"} recibidas`);
 }
+const fotosCtl = (n, write, id = "") => `<div class="fotosn"${id ? ` id="${id}"` : ""}><button type="button" data-act="fmenos" aria-label="Una foto menos" ${write && n > 0 ? "" : "disabled"}>−</button><input type="number" data-act="fnum" min="0" step="1" value="${n}" aria-label="Número de fotos recibidas" ${write ? "" : "disabled"}><button type="button" data-act="fmas" aria-label="Una foto más" ${write ? "" : "disabled"}>+</button></div>`;
 let shown = 150, openCid = null;
 export function viewControl(main) {
   const draw = (keepFocus) => {
@@ -101,13 +107,13 @@ export function viewControl(main) {
     { const open = $("#sinF")?.open; $("#sinFbox").innerHTML = sinFechasHTML(); if (open && $("#sinF")) $("#sinF").open = true; }
     $("#summary").innerHTML = summaryHTML(counts(filtered(all, { noStatus: true })), S.F.st);
     $("#rows").innerHTML = rows.slice(0, shown).map((r) => {
-      const st = stOf(r), sel = fotosSel(r.st), f = sel.filter(Boolean).length;
+      const st = stOf(r), f = fotosN(r.st);
       return `<tr class="click" data-cid="${esc(r.cid)}">
         <td><button type="button" class="chk" data-act="check" aria-pressed="${st === "Comprobado"}" aria-label="Marcar comprobado" ${write ? "" : "disabled"}>✓</button></td>
         <td class="ub">${esc(r.s.ub)}<small>${esc(r.s.sop)}${r.s.det ? " · " + esc(r.s.det) : ""}</small></td>
         <td class="mono hide-sm">${esc(r.s.id)}</td><td>${esc(r.s.owner)}</td><td class="hide-sm">${esc(r.s.ciudad)}</td>
         <td>${esc(r.p.campana)}<span class="sub">${esc(r.p.periodo)}${r.p.fechas ? " · " + esc(r.p.fechas) : ""}</span></td>
-        <td><div class="photos" title="${f} de 5 fotos">${[1, 2, 3, 4, 5].map((n) => `<button type="button" data-act="foto" data-n="${n}" class="${sel[n - 1] ? "on" : ""}" aria-pressed="${sel[n - 1]}" aria-label="Foto ${n}" title="Foto ${n}" ${write ? "" : "disabled"}>${n}</button>`).join("")}</div></td>
+        <td>${fotosCtl(f, write)}</td>
         <td class="hide-sm"><span class="yn ${r.st.drive ? "y" : "n"}">${r.st.drive ? "Sí" : "No"}</span></td>
         <td class="hide-sm"><span class="yn ${r.st.ppt ? "y" : "n"}">${r.st.ppt ? "Sí" : "No"}</span></td>
         <td><span class="pill ${pillCls(st)}">${st}</span></td><td class="hide-sm">${esc(nombreDe(r.st.verificadoPor))}</td></tr>`;
@@ -118,6 +124,11 @@ export function viewControl(main) {
     $("#moreBtn").textContent = `Mostrar más (${rows.length - shown} restantes)`;
     $("#moreBtn").onclick = () => { shown += 300; draw(true); };
     $("#rows").onclick = onRowClick;
+    $("#rows").onchange = (e) => {
+      if (e.target.dataset.act !== "fnum" || !can("verificador")) return;
+      const tr = e.target.closest("tr[data-cid]"), r = tr && findRow(tr.dataset.cid);
+      if (r) setFotos(r, e.target.value);
+    };
     if (openCid) openDrawer(openCid);
   };
   shown = 150; draw();
@@ -133,6 +144,7 @@ async function writeEstado(r, patch, msg) {
   } catch (e) { console.error(e); toast("No se pudo guardar. Revisa tu conexión o tus permisos."); }
 }
 function onRowClick(e) {
+  if (e.target.closest("input[data-act]")) { e.stopPropagation(); return; }   // escribir el número no abre el detalle
   const tr = e.target.closest("tr[data-cid]"); if (!tr) return;
   const r = findRow(tr.dataset.cid); if (!r) return;
   const b = e.target.closest("button[data-act]");
@@ -141,8 +153,8 @@ function onRowClick(e) {
     if (b.dataset.act === "check") {
       const done = stOf(r) === "Comprobado";
       writeEstado(r, done ? { estatus: "En revisión" } : { estatus: "Comprobado", drive: true, ppt: true, verificadoPor: S.auth.uid, fechaVerif: nowIso() }, done ? "Se quitó el ✔" : "Marcado como comprobado");
-    } else {
-      toggleFoto(r, +b.dataset.n - 1);
+    } else if (b.dataset.act === "fmas" || b.dataset.act === "fmenos") {
+      setFotos(r, fotosN(r.st) + (b.dataset.act === "fmas" ? 1 : -1));
     }
     return;
   }
@@ -160,7 +172,7 @@ function openDrawer(cid) {
     <dl class="meta"><dt>Campaña</dt><dd>${esc(r.p.campana)} · ${esc(r.p.periodo)}${r.p.fechas ? " (" + esc(r.p.fechas) + ")" : ""}</dd><dt>Owner</dt><dd>${esc(r.s.owner)}</dd><dt>Ciudad</dt><dd>${esc(r.s.ciudad)} · ${esc(r.s.esp)}</dd><dt>Mapa</dt><dd>${maps}</dd>
     ${d.verificadoPor ? `<dt>Verificó</dt><dd>${esc(nombreDe(d.verificadoPor))} · ${fecha(d.fechaVerif)}</dd>` : ""}${d.actualizadoPor ? `<dt>Último cambio</dt><dd>${esc(nombreDe(d.actualizadoPor))} · ${fecha(d.actualizado)}</dd>` : ""}</dl>
     <div class="field"><span>Estatus</span><div class="stsel" id="dSt">${ESTATUS.map((s) => `<button type="button" class="${pillCls(s)}" data-s="${s}" aria-pressed="${s === st}">${s}</button>`).join("")}</div></div>
-    <div class="field"><span>Fotos recibidas (${fotosSel(d).filter(Boolean).length} de 5)</span><div class="toggles" id="dFotos">${fotosSel(d).map((on, i) => `<label class="toggle"><input type="checkbox" data-i="${i}" ${on ? "checked" : ""}> Foto ${i + 1}</label>`).join("")}</div></div>
+    <div class="field"><span>Fotos recibidas</span>${fotosCtl(fotosN(d), can("verificador"), "dFotos")}</div>
     <div class="toggles"><label class="toggle"><input type="checkbox" id="dDrive" ${d.drive ? "checked" : ""}> Cargadas en Drive</label><label class="toggle"><input type="checkbox" id="dPpt" ${d.ppt ? "checked" : ""}> Cargadas en PPT</label></div>
     <label class="field"><span>Link de la carpeta en Drive</span><input type="url" id="dLink" value="${esc(d.link || "")}" placeholder="https://drive.google.com/…"></label>
     ${d.link ? `<a href="${esc(d.link)}" target="_blank" rel="noopener">Abrir carpeta</a>` : ""}
@@ -176,7 +188,8 @@ function openDrawer(cid) {
   if (!w) { $$(".body button,.body input,.body textarea,footer button", dr).forEach((x) => (x.disabled = true)); return; }
   $("#dSt").onclick = (e) => { const b = e.target.closest("button"); if (!b) return; const s = b.dataset.s;
     writeEstado(r, s === "Comprobado" ? { estatus: s, verificadoPor: S.auth.uid, fechaVerif: nowIso() } : { estatus: s }, "Estatus: " + s); };
-  $("#dFotos").onchange = (e) => { const i = e.target.dataset.i; if (i !== undefined) toggleFoto(r, +i); };
+  $("#dFotos").onclick = (e) => { const b = e.target.closest("button[data-act]"); if (b) setFotos(r, fotosN(r.st) + (b.dataset.act === "fmas" ? 1 : -1)); };
+  $("#dFotos").onchange = (e) => { if (e.target.dataset.act === "fnum") setFotos(r, e.target.value); };
   $("#dDrive").onchange = (e) => writeEstado(r, { drive: e.target.checked }, "En Drive: " + (e.target.checked ? "Sí" : "No"));
   // si está en la PPT también está en Drive y queda comprobado (salvo que tenga observaciones)
   $("#dPpt").onchange = (e) => {

@@ -202,3 +202,11 @@ td select{max-width:440px;width:100%}
 :root[data-theme="dark"] input[type=date]{color-scheme:dark}
 tr.pcara td{background:var(--idle-soft)}
 tr.pcara td:first-child{color:var(--muted);text-align:center}
+
+/* número de fotos recibidas (− [n] +) */
+.fotosn{display:inline-flex;align-self:flex-start;width:max-content;align-items:center;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:var(--surface)}
+.fotosn button{width:24px;height:26px;border:0;background:var(--surface-2);cursor:pointer;font-weight:700;color:var(--ink);padding:0}
+.fotosn button:hover:not(:disabled){background:var(--accent-soft);color:var(--accent)}
+.fotosn button:disabled{opacity:.4;cursor:default}
+.fotosn input{flex:none;width:56px!important;min-width:0;padding:0!important;height:26px;border:0;text-align:center;font-weight:600;font-variant-numeric:tabular-nums;background:transparent;color:var(--fg);-moz-appearance:textfield}
+.fotosn input::-webkit-outer-spin-button,.fotosn input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}

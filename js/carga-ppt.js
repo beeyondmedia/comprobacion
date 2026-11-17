@@ -2,7 +2,7 @@
 // en el periodo elegido (Foto 1…N y "En PPT: Sí"). El ✔ y el estatus no cambian.
 import { S, $, $$, esc, opt, nowIso, toast, can, periodosActivos, matchQuery, nextSiteIds, cleanSite, fold } from "./core.js";
 import { readPptx, matchSlides, textoUbicacion, mismaUbicacion } from "./ppt.js";
-import { fotosSel } from "./views.js";
+import { fotosN } from "./views.js";
 
 const JSZIP_URL = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
 let jszipP = null;
@@ -11,7 +11,7 @@ const loadJsZip = () => jszipP || (jszipP = new Promise((ok, ko) => {
   const s = document.createElement("script"); s.src = JSZIP_URL; s.onload = () => ok(); s.onerror = () => { jszipP = null; ko(new Error("jszip")); };
   document.head.appendChild(s);
 }));
-const MAX = 5;
+const MAX = 9999;   // sin tope: se guarda el número real de fotos de la PPT
 const steps = (list, on) => `<div class="steps">${list.map((s, i) => `<span class="${i === on ? "on" : ""}">${i + 1}. ${s}</span>`).join("")}</div>`;
 const STEPS = ["Periodo y archivo", "Revisión", "Listo"];
 const ST_PILL = { "Con observaciones": "p-Con-observaciones", "En revisión": "p-En-revisión", "Pendiente": "p-Pendiente" };
@@ -115,7 +115,7 @@ export function viewCargaPpt(main) {
 
   const per = () => S.periodos.find((p) => p.id === pid);
   const cur = (sid) => (per()?.estado || {})[sid] || {};
-  const curN = (sid) => fotosSel(cur(sid)).filter(Boolean).length;
+  const curN = (sid) => fotosN(cur(sid));
   // Diapositivas seguidas con el mismo texto = la misma ubicación continuada (la app de Testigos
   // pone más fotos en otra diapositiva igual). No es un repetido: sus fotos se suman.
   const esContinuacion = (a, b) => !a.cara && !b.cara && a.texto && a.texto === b.texto && Math.abs(a.n_slide - b.n_slide) === 1;
@@ -191,7 +191,7 @@ export function viewCargaPpt(main) {
 
   const step2 = () => draw2();
   // Un mismo soporte en varias diapositivas: no bloquea; se suman sus fotos (máximo 5)
-  const dupHTML = (dup) => `<div class="msg warn">${dup.length === 1 ? "1 soporte aparece" : dup.length + " soportes aparecen"} en más de una diapositiva: ${dup.map((id) => `<b>${esc(label(id))}</b> (diap. ${rows.filter((r) => r.sid === id).map((r) => r.n_slide).join(", ")})`).join(" · ")}. Al guardar se suman sus fotos (con ${MAX} o más, el soporte queda completo). Si no es el mismo soporte, cámbialo en la fila marcada como "Repetido".</div>`;
+  const dupHTML = (dup) => `<div class="msg warn">${dup.length === 1 ? "1 soporte aparece" : dup.length + " soportes aparecen"} en más de una diapositiva: ${dup.map((id) => `<b>${esc(label(id))}</b> (diap. ${rows.filter((r) => r.sid === id).map((r) => r.n_slide).join(", ")})`).join(" · ")}. Al guardar se suman sus fotos. Si no es el mismo soporte, cámbialo en la fila marcada como "Repetido".</div>`;
   // Ubicaciones del plan que no salen en la PPT: dejarlas pendientes o darlas de baja (con motivo)
   function faltanHTML(faltan) {
     const nb = faltan.filter((id) => faltDec[id]?.acc === "baja").length;
