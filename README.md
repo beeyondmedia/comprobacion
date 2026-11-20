@@ -68,7 +68,7 @@ Los archivos de la carga inicial **no van en el repositorio** (es público). Sú
 - **Ubicaciones de la PPT que no están en el plan:** si una diapositiva no coincide con el periodo pero sí, sin dudas, con un soporte del inventario, se propone "Fuera del plan: se agregará"; al guardar se agrega al periodo y cuenta en Avance. Puedes cambiarlo a "No aplicar".
 - **Ubicaciones del plan que no salen en la PPT:** aparecen en una lista para decidir cada una: **Dejar pendiente** (por defecto) o **Dar de baja del plan** con motivo (se pide confirmar al guardar). Las bajas salen de Control y Avance y quedan registradas en Campañas › Editar soportes, donde se pueden reactivar.
 - Se guarda el **número real de fotos** de la PPT (sin tope; si un soporte ocupa varias diapositivas, se suman). Si el soporte ya tenía otro número, eliges entre usar la PPT o conservar el que estaba.
-- Al guardar se marcan Foto 1…N, "En PPT: Sí" y "En Drive: Sí" (si está en la PPT también está en Drive), y el soporte queda **Comprobado ✔**. Los que están "Con observaciones" conservan ese estatus. Lo mismo pasa en Control al marcar "Cargadas en PPT".
+- Al guardar se pone el **número de fotos** del soporte (en Control y en el detalle se ajusta con − / +), "En PPT: Sí" y "En Drive: Sí" (si está en la PPT también está en Drive), y el soporte queda **Comprobado ✔**. Los que están "Con observaciones" conservan ese estatus. Lo mismo pasa en Control al marcar "Cargadas en PPT".
 
 **Duplicar campaña** (Aprobador y Administrador, en Campañas): crea una campaña nueva con los mismos periodos y soportes activos (sin los dados de baja). Eliges nombre, cliente, versión, qué periodos copiar y sus fechas. Fotos, checks y arte empiezan en cero; después se ajusta cada periodo con "Editar soportes".
 
@@ -110,8 +110,13 @@ firestore.rules       reglas de seguridad (pegar en la consola de Firebase)
 
 ## Recuadro de estatus de la app de Testigos
 
-Las PPT que genera la app de Testigos (beeyondmedia/BEEYOND-TESTIGOS) pueden traer, en el lugar de una foto, un recuadro llamado `BT-ESTATUS` con el estatus del reporte de monitoreo (1er renglón: CON OBSERVACIONES, EN REVISIÓN o PENDIENTE) y el comentario (2º renglón). Al cargar la PPT:
+Las PPT que genera la app de Testigos (beeyondmedia/BEEYOND-TESTIGOS) pueden traer, en el panel coral de la izquierda (primera diapositiva de la ubicación), un recuadro llamado `BT-ESTATUS` con el estatus del reporte de monitoreo (1er renglón: CON OBSERVACIONES, EN REVISIÓN o PENDIENTE) y el comentario (2º renglón). Al cargar la PPT:
 
-- **Con observaciones / En revisión:** se marcan las fotos como siempre, pero el soporte toma ese estatus (no Comprobado) y el comentario se agrega a *Comentarios* sin repetir lo que ya había.
+- **Con observaciones / En revisión:** se guarda el número de fotos como siempre, pero el soporte toma ese estatus (no Comprobado) y el comentario se agrega a *Comentarios* sin repetir lo que ya había.
 - **Pendiente:** diapositiva sin fotos; el soporte sigue pendiente y no se toca.
 - Sin recuadro: igual que antes.
+
+Además:
+- **Diapositivas de continuación:** cuando Testigos reparte las fotos de una ubicación en varias diapositivas seguidas con el mismo texto, se toman como el mismo soporte y sus fotos se suman.
+- **Espacios de foto de Testigos** (marcadores de imagen): cuentan como foto solo si ya tienen una imagen insertada; los vacíos no cuentan.
+- Un soporte con fotos se considera completo aunque traiga más de 5.
