@@ -1,6 +1,6 @@
 // Vistas de operación: Control, Avance, Campañas, Inventario y Usuarios.
 import { S, $, $$, esc, opt, pct, fecha, nowIso, nombreDe, pillCls, toast, can, saveF, ESTATUS, ROLES,
-  allRows, stOf, filtered, counts, stackBar, summaryHTML, periodosActivos, site, matchQuery, fold, porNombre, cleanSite, parseFechas, rangoPeriodo, enRango, fechaCorta } from "./core.js";
+  allRows, stOf, filtered, counts, stackBar, summaryHTML, periodosActivos, site, matchQuery, fold, porNombre, cleanSite, nextSiteIds, parseFechas, rangoPeriodo, enRango, fechaCorta } from "./core.js";
 import { downloadXlsx } from "./excel.js";
 import { DOMINIO } from "./config.js";
 
@@ -203,26 +203,58 @@ function openDrawer(cid) {
 }
 // ================================================================ EDITAR SOPORTE
 export function openSiteEditor(id) {
-  const cur = S.catalogo.get(id); const dr = $("#drawer");
+  const nuevo = !id;
+  const cur = nuevo ? { esp: "CALLE", ciudad: "CDMX", activo: true, alias: [] } : S.catalogo.get(id); const dr = $("#drawer");
   if (!cur) { toast("Ese soporte no está en el inventario"); return; }
   const ed = can("aprobador");
+  if (nuevo && !ed) return;
+  const ciudades = [...new Set(["CDMX", "GDL", "MTY", ...S.ciudadesDoc, ...[...S.catalogo.values()].map((x) => x.ciudad)].filter(Boolean))].sort();
   const f = (k, label, v, type = "text") => `<label class="field"><span>${label}</span><input type="${type}" id="se-${k}" value="${esc(v ?? "")}" ${ed ? "" : "disabled"} ${type === "number" ? 'step="any"' : ""}></label>`;
-  dr.innerHTML = `<header><div style="flex:1;min-width:0"><div class="mono">${esc(id)}</div><h2>${ed ? "Editar soporte" : "Datos del soporte"}</h2><div class="note">${esc(cur.ciudad)}</div></div><button class="btn" type="button" id="seClose">Cerrar</button></header>
+  const req = (t) => nuevo ? t + " *" : t;
+  dr.innerHTML = `<header><div style="flex:1;min-width:0"><div class="mono">${nuevo ? "ID automático" : esc(id)}</div><h2>${nuevo ? "Nuevo soporte" : ed ? "Editar soporte" : "Datos del soporte"}</h2>${nuevo ? "" : `<div class="note">${esc(cur.ciudad)}</div>`}</div><button class="btn" type="button" id="seClose">Cerrar</button></header>
   <div class="body">
+    ${nuevo ? `<label class="field"><span>Ciudad *</span><select id="se-ciudad">${ciudades.map((c) => opt(c, c, c === "CDMX")).join("")}${opt("__otra", "Otra ciudad…")}</select></label>
+    <label class="field" id="se-ciudad2w" hidden><span>Clave de la ciudad nueva (ej. PUE, QRO)</span><input type="text" id="se-ciudad2" maxlength="8"></label>` : ""}
     <label class="field"><span>Tipo de espacio</span><select id="se-esp" ${ed ? "" : "disabled"}>${["CALLE", "CENTRO COMERCIAL", "AEROPUERTO"].map((e) => opt(e, e, cur.esp === e)).join("")}</select></label>
-    ${f("sop", "Venue type", cur.sop)}${f("ub", "Ubicación", cur.ub)}${f("det", "Detalle / posición", cur.det)}${f("owner", "Media owner", cur.owner)}
+    ${f("sop", req("Venue type"), cur.sop)}${f("ub", req("Ubicación"), cur.ub)}${f("det", "Detalle / posición", cur.det)}${f("owner", req("Media owner"), cur.owner)}
     <div class="grid2f">${f("network", "Network", cur.network)}${f("idprov", "ID proveedor", cur.idprov)}</div>
     ${f("medidas", "Medidas", cur.medidas)}
     <div class="grid2f">${f("lat", "Latitud", cur.lat, "number")}${f("lon", "Longitud", cur.lon, "number")}</div>
-    <label class="toggle"><input type="checkbox" id="se-activo" ${cur.activo !== false ? "checked" : ""} ${ed ? "" : "disabled"}> Soporte activo</label>
+    ${nuevo ? "" : `<label class="toggle"><input type="checkbox" id="se-activo" ${cur.activo !== false ? "checked" : ""} ${ed ? "" : "disabled"}> Soporte activo</label>`}
     ${(cur.alias || []).length ? `<div class="field"><span>Nombres originales con los que se ha recibido</span><div class="note">${(cur.alias || []).map(esc).join("<br>")}</div></div>` : ""}
     ${cur.editadoPor ? `<p class="note">Última edición: ${esc(nombreDe(cur.editadoPor))} · ${fecha(cur.editado)}</p>` : ""}
-    <p class="note">${ed ? "El nombre anterior se guarda como nombre original, así los planes que lo traigan escrito igual se siguen reconociendo. El ID y la ciudad no se cambian aquí: usa la Carga de inventario." : "Solo un aprobador o administrador puede editar el inventario."}</p>
+    <p class="note">${nuevo ? "* Obligatorio. El ID BYM se asigna solo con el siguiente número de su ciudad." : ed ? "El nombre anterior se guarda como nombre original, así los planes que lo traigan escrito igual se siguen reconociendo. El ID y la ciudad no se cambian aquí: usa la Carga de inventario." : "Solo un aprobador o administrador puede editar el inventario."}</p>
   </div>
-  <footer>${ed ? `<button class="btn primary" type="button" id="seSave">Guardar cambios</button>` : ""}</footer>`;
+  <footer>${ed ? `<button class="btn primary" type="button" id="seSave">${nuevo ? "Dar de alta" : "Guardar cambios"}</button>` : ""}</footer>`;
   dr.hidden = false; $("#scrim").hidden = false;
   $("#seClose").onclick = closeDrawer;
   if (!ed) return;
+  if (nuevo) {
+    // venue y owner: sugerir los que ya existen para no crear variantes
+    const dl = (k, vals) => { const l = document.createElement("datalist"); l.id = "dl-" + k; l.innerHTML = [...new Set(vals.filter(Boolean))].sort().map((v) => `<option value="${esc(v)}">`).join(""); dr.appendChild(l); $("#se-" + k).setAttribute("list", l.id); };
+    dl("sop", [...S.catalogo.values()].map((x) => x.sop)); dl("owner", [...S.catalogo.values()].map((x) => x.owner));
+    $("#se-ciudad").onchange = (e) => { $("#se-ciudad2w").hidden = e.target.value !== "__otra"; };
+    $("#se-ub").focus();
+    $("#seSave").onclick = async () => {
+      const up = (k) => $("#se-" + k).value.trim().toUpperCase();
+      const n = (k) => { const v = parseFloat($("#se-" + k).value); return isFinite(v) ? v : null; };
+      let ciudad = $("#se-ciudad").value;
+      if (ciudad === "__otra") { ciudad = fold($("#se-ciudad2").value).replace(/ /g, ""); if (!/^[A-Z]{2,8}$/.test(ciudad)) { toast("Escribe la clave de la ciudad (solo letras, ej. PUE)"); return; } }
+      const d = cleanSite({ esp: $("#se-esp").value, sop: up("sop"), ub: up("ub"), det: up("det"), owner: up("owner"), network: up("network"), ciudad,
+        idprov: $("#se-idprov").value.trim(), medidas: $("#se-medidas").value.trim(), lat: n("lat"), lon: n("lon"), activo: true });
+      if (!d.ub || !d.sop || !d.owner) { toast("Llena ubicación, venue type y media owner"); return; }
+      const igual = [...S.catalogo.entries()].find(([, x]) => x.ciudad === ciudad && fold(x.ub) === fold(d.ub) && fold(x.det) === fold(d.det) && fold(x.sop) === fold(d.sop));
+      if (igual && !$("#seSave").dataset.ok) { $("#seSave").dataset.ok = "1"; $("#seSave").textContent = "Dar de alta de todos modos"; toast(`Ya existe uno igual: ${igual[0]}. Presiona otra vez si de verdad es otro.`); return; }
+      const [nid] = nextSiteIds(ciudad, 1);
+      const data = { ...d, creado: nowIso(), creadoPor: S.auth.uid, origen: "Alta manual" };
+      $("#seSave").disabled = true;
+      try {
+        await S.be.batch([S.ciudadesDoc.has(ciudad) ? { op: "update", path: "catalogo/" + ciudad, fields: [[["sitios", nid], data]] } : { op: "set", path: "catalogo/" + ciudad, data: { sitios: { [nid]: data } } }]);
+        toast(`Soporte ${nid} dado de alta`); closeDrawer();
+      } catch (e) { console.error(e); $("#seSave").disabled = false; toast("No se pudo guardar. Revisa tus permisos."); }
+    };
+    return;
+  }
   $("#seSave").onclick = async () => {
     const up = (k) => $("#se-" + k).value.trim().toUpperCase();
     const n = (k) => { const v = parseFloat($("#se-" + k).value); return isFinite(v) ? v : null; };
@@ -546,12 +578,13 @@ export function viewInventario(main) {
       .filter((s) => (!soloActivos || s.activo !== false) && (!city || s.ciudad === city) && matchQuery(q, s.id, s.ub, s.sop, s.det, s.owner, s.idprov, s.alias || []))
       .sort((a, b) => a.id.localeCompare(b.id));
     if (!keep) {
-      main.innerHTML = `<div class="pagehead"><h1>Inventario de soportes</h1><button class="btn" type="button" id="invExp">Descargar inventario (Excel)</button>${can("verificador") ? `<a class="btn primary" href="#carga-inventario">Cargar cambios de inventario</a>` : ""}</div>
+      main.innerHTML = `<div class="pagehead"><h1>Inventario de soportes</h1>${can("aprobador") ? `<button class="btn primary" type="button" id="invNew">+ Nuevo soporte</button>` : ""}<button class="btn" type="button" id="invExp">Descargar inventario (Excel)</button>${can("verificador") ? `<a class="btn" href="#carga-inventario">Cargar cambios de inventario</a>` : ""}</div>
       <div class="toolbar"><label class="grow">Buscar<input type="search" id="iq" placeholder="ID, ubicación, owner o nombre original"></label><label>Ciudad<select id="ic">${opt("", "Todas")}${[...new Set([...S.catalogo.values()].map((s) => s.ciudad))].filter(Boolean).sort().map((c) => opt(c)).join("")}</select></label>
       <label class="toggle" style="flex:0 0 auto;text-transform:none;letter-spacing:0;font-size:13px;color:var(--fg)"><input type="checkbox" id="ia" checked> Solo activos</label></div>
       <p class="note" id="icount"></p>${can("aprobador") ? `<p class="note">Da clic en un soporte para corregir su nombre u otros datos.</p>` : ""}<div class="tablebox"><table><thead><tr><th>ID</th><th>Espacio</th><th>Venue type</th><th>Ubicación</th><th>Ciudad</th><th>Owner</th><th class="hide-sm">Medidas</th><th class="hide-sm">Campañas</th><th>Mapa</th></tr></thead><tbody id="irows"></tbody></table>
       <div class="empty" id="iempty" hidden></div><div class="more" id="imore" hidden><button class="btn" type="button" id="imoreb">Mostrar más</button></div></div>`;
       $("#iq").oninput = (e) => { q = e.target.value; invShown = 200; draw(true); };
+      if ($("#invNew")) $("#invNew").onclick = () => openSiteEditor(null);
       $("#ic").onchange = (e) => { city = e.target.value; invShown = 200; draw(true); };
       $("#ia").onchange = (e) => { soloActivos = e.target.checked; draw(true); };
       $("#invExp").onclick = exportInventario;

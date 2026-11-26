@@ -54,6 +54,8 @@ Los archivos de la carga inicial **no van en el repositorio** (es público). Sú
 - Pestaña de **sustituciones**: los sitios con motivo (No disponible, Fallas técnicas…) se proponen para quitar, y los que tienen estatus (Sustitución, Live, Bonificación) para agregar. Tú decides en cada uno.
 - Si la campaña ya existe, los periodos nuevos se agregan; si un periodo ya existe, su lista de soportes se reemplaza y se conservan las comprobaciones de los soportes que siguen.
 
+**Alta manual de un soporte** (Aprobador y Administrador): en **Inventario › + Nuevo soporte** llenas ciudad, ubicación, venue type y media owner (obligatorios) y, si quieres, detalle, tipo de espacio, network, ID proveedor, medidas y coordenadas. El ID BYM se asigna solo con el siguiente de su ciudad; si ya existe uno igual en la misma ciudad, te avisa antes de guardar. Se puede elegir "Otra ciudad…" para abrir una ciudad nueva (ej. PUE).
+
 **Inventario** (agrega y actualiza; nunca borra):
 - Usa como plantilla el inventario actual (botón "Descargar inventario actual").
 - Celdas vacías = sin cambio. `ACTIVO = No` da de baja un soporte sin perder su historial.
