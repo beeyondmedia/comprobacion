@@ -76,6 +76,8 @@ Los archivos de la carga inicial **no van en el repositorio** (es público). Sú
 
 **Eliminar campaña** (solo Administrador, en Campañas): para una campaña cancelada o que se subió duplicada. Pide confirmar y borra la campaña con sus periodos y comprobaciones; no se puede deshacer. El inventario y el historial de cargas no se tocan. Si solo quieres ocultarla, usa Archivar.
 
+**Fotos procesadas** (Avance): el resumen de arriba y cada tarjeta de campaña/periodo muestran el total de fotos registradas (suma de las fotos de cada soporte, de la PPT o capturadas a mano). Respeta los filtros, incluido el de fechas.
+
 **Versión:** campo libre de cada campaña (por ejemplo "V2 · 10 nov"), se escribe en Editar o al duplicar. Se ve junto al nombre y sale en el Excel exportado.
 
 Nada de las cargas de Excel se aplica hasta que un aprobador (distinto de quien subió el archivo) o un administrador lo aprueba. Todas las cargas quedan en **Historial**.

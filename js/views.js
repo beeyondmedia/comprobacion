@@ -262,10 +262,14 @@ export function viewAvance(main) {
     { const open = $("#sinF")?.open; $("#sinFbox").innerHTML = sinFechasHTML(); if (open && $("#sinF")) $("#sinF").open = true; }
     const all = allRows(), rows = filtered(all, { noStatus: true });
     $("#sum").innerHTML = summaryHTML(counts(rows));
+    // fotos procesadas: suma de las fotos registradas de cada soporte (PPT o a mano)
+    const nFotos = (rs) => rs.reduce((a, r) => a + fotosN(r.st), 0);
+    const fmt = (n) => n.toLocaleString("es-MX") + (n === 1 ? " foto" : " fotos");
+    { const m = $("#sum .kpi.main"); if (m) m.insertAdjacentHTML("beforeend", `<div class="note fotos-tot">📷 <b>${fmt(nFotos(rows))}</b> procesadas</div>`); }
     $("#cards").innerHTML = periodosActivos().map((p) => {
       const rs = rows.filter((r) => r.p.id === p.id); if (!rs.length) return "";
       const k = counts(rs);
-      return `<div class="card click" role="button" tabindex="0" data-goto-camp="${esc(p.campana)}" data-goto-per="${esc(p.periodo)}" title="Ver en Control"><div><div class="t">${esc(p.campana)}</div><div class="note">${esc(p.periodo)}${p.fechas ? " · " + esc(p.fechas) : (() => { const r = rangoPeriodo(p); return r ? " · " + fechaCorta(r.ini) + " – " + fechaCorta(r.fin) : ""; })()}</div></div><div class="big">${pct(k.pct)}</div>${stackBar(k)}<div class="note">${k.Comprobado} de ${k.total} comprobados · ${k.Pendiente} pendientes</div></div>`;
+      return `<div class="card click" role="button" tabindex="0" data-goto-camp="${esc(p.campana)}" data-goto-per="${esc(p.periodo)}" title="Ver en Control"><div><div class="t">${esc(p.campana)}</div><div class="note">${esc(p.periodo)}${p.fechas ? " · " + esc(p.fechas) : (() => { const r = rangoPeriodo(p); return r ? " · " + fechaCorta(r.ini) + " – " + fechaCorta(r.fin) : ""; })()}</div></div><div class="big">${pct(k.pct)}</div>${stackBar(k)}<div class="note">${k.Comprobado} de ${k.total} comprobados · ${k.Pendiente} pendientes</div><div class="note fotos-tot">📷 <b>${fmt(nFotos(rs))}</b> procesadas</div></div>`;
     }).join("") || `<div class="empty">No hay campañas con estos filtros.</div>`;
     $("#byOwner").innerHTML = rowbars(groupBy(rows, (r) => r.s.owner), true, "owner");
     $("#byCity").innerHTML = rowbars(groupBy(rows, (r) => r.s.ciudad), false, "city");
