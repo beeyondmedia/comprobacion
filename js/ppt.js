@@ -13,7 +13,7 @@ function xfrm(block) {
 const ESTATUS_TXT = [[/^CON OBSERVACI[OÓ]N(ES)?$/i, "Con observaciones"], [/^EN REVISI[OÓ]N$/i, "En revisión"], [/^PENDIENTE$/i, "Pendiente"]];
 const PRIORIDAD = { "Pendiente": 1, "En revisión": 2, "Con observaciones": 3 };
 export function estatusDe(t) { const x = String(t || "").trim(); const f = ESTATUS_TXT.find(([re]) => re.test(x)); return f ? f[1] : ""; }
-const IGNORAR_TXT = /^(CAMPA[NÑ]A|COMPROBACI[OÓ]N|REPORTE|MERCADO LIBRE|PREVIA|DURANTE)\b/i;
+const IGNORAR_TXT = /^(VER EN GOOGLE MAPS|CAMPA[NÑ]A|COMPROBACI[OÓ]N|REPORTE|MERCADO LIBRE|PREVIA|DURANTE)\b/i;
 
 export async function readPptx(file) {
   if (!window.JSZip) throw new Error("No se cargó el lector de PowerPoint. Recarga la página.");
